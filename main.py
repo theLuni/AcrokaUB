@@ -14,16 +14,27 @@ async def main():
     try:
         await client.start()
 
+        # Проверяем существование файла TOKEN_FILE и его содержимое
         if not os.path.exists(TOKEN_FILE) or os.stat(TOKEN_FILE).st_size == 0:
-            username, user_id, token = await create_bot(client)
-            if token:
-                await asyncio.sleep(5)
+            # Запрашиваем у пользователя, хочет ли он загрузить существующего бота
+            load_existing = input("Файл токена пуст. Хотите загрузить существующего бота? (да/нет): ").strip().lower()
+            if load_existing == 'да':
+                user_id = input("Введите юзер ID вашего бота: ").strip()
+                username = input("Введите юзернейм вашего бота (без @): ").strip()
+                token = input("Введите токен вашего бота: ").strip()
+
+                # Сохраняем введенные данные в файл TOKEN_FILE
+                with open(TOKEN_FILE, 'w') as f:
+                    f.write(f"{username}:{user_id}:{token}")
+
             else:
+                print("Загрузка бота отменена.")
                 return
-        else:
-            with open(TOKEN_FILE, 'r') as f:
-                data = f.read().strip()
-                username, user_id, token = data.split(':', 2)
+
+        # Если файл существует и не пустой, читаем данные
+        with open(TOKEN_FILE, 'r') as f:
+            data = f.read().strip()
+            username, user_id, token = data.split(':', 2)
 
         register_event_handlers(client)
         bot_running = asyncio.create_task(run_bot(client, token))
