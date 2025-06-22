@@ -1,0 +1,5 @@
+telethon==1.40.0
+requests==2.32.4
+pyfiglet==1.0.3
+langdetect==1.0.9
+aiohttp==3.12.13
