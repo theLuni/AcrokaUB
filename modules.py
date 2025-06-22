@@ -7,7 +7,7 @@ import platform
 from telethon import events, TelegramClient
 from datetime import datetime, timedelta
 from config import TOKEN_FILE, API_ID, API_HASH
-import telethon 
+import telethon
 import requests
 
 # В начале файла
@@ -26,51 +26,9 @@ def translate_text(text, target_lang):
     else:
         return "Ошибка перевода."
 
-@client.on(events.NewMessage)
-async def handler(event):
-    if event.message.message.startswith('.tr '):
-        parts = event.message.message.split(' ', 2)
-        if len(parts) != 3:
-            await event.reply('Используйте: .tr <код языка> <текс для перевода>')
-            return
-        
-        target_lang = parts[1]
-        text_to_translate = parts[2]
 
-        # Переводим текст
-        translated_text = translate_text(text_to_translate, target_lang)
-
-        # Изменяем исходное сообщение
-        await event.message.edit(translated_text)
-
-# Создание экземпляра переводчика
-def register_event_handlers(client):
-    @client.on(events.NewMessage(pattern=r'\.tr (\w+)'))
-    async def translate_handler(event):
-        global received_messages_count, active_users
-        received_messages_count += 1
-        active_users.add(event.sender_id)
-        
-        if event.is_reply:
-            target_language = event.message.text.split(' ')[1].strip()
-            replied_message = await event.get_reply_message()
-            
-            if replied_message:
-                text_to_translate = replied_message.message
-                try:
-                    translator = get_translator(target_language)
-                    translated_text = translator.translate(text_to_translate)
-
-                    await event.reply(translated_text)
-                except Exception as e:
-                    await event.reply(f"❌ Ошибка при переводе: {str(e)}")
-            else:
-                await event.reply("❌ Ошибка: Не удалось получить сообщение для перевода.")
-        else:
-            await event.reply("❗ Используйте эту команду в ответ на сообщение, которое нужно перевести.")
-            
 class DeferredMessage:
-    def __init__(self, client):
+    def __init__(self, client):  # исправлено на __init__
         self.client = client
         self.interval = 3600  # По умолчанию, 1 час
         self.message_count = 10  # По умолчанию, 10 сообщений
@@ -80,7 +38,7 @@ class DeferredMessage:
         args = event.message.message.split(' ', 3)
 
         if len(args) < 4:
-            await event.edit("❗ Пожалуйста, укажите количество сообщений, период (в минутах) и текст.")
+            await event.edit("❗️ Пожалуйста, укажите количество сообщений, период (в минутах) и текст.")
             return
         
         try:
@@ -106,12 +64,6 @@ class DeferredMessage:
             await self.client.send_message(chat_id, text, schedule=send_time)
             sent_messages_count += 1  # Увеличиваем счётчик отправленных сообщений
 
-        final_message = (f"📤 Запланированные сообщения будут отправлены!\n"
-                         f"⏳ Следующее сообщение через {self.interval // 60} минут(ы).")
-
-        await self.client.send_message(chat_id, final_message)
-
-
 
 def register_event_handlers(client):
     deferred_message = DeferredMessage(client)
@@ -122,6 +74,23 @@ def register_event_handlers(client):
         received_messages_count += 1  # Увеличиваем счётчик полученных сообщений
         active_users.add(event.sender_id)  # Добавляем пользователя в активные пользователи
         await deferred_message.отложка(event)
+
+    @client.on(events.NewMessage(pattern=r'\.tr '))  # Обработчик перевода
+    async def translate_handler(event):
+        if event.message.message.startswith('.tr '):
+            parts = event.message.message.split(' ', 2)
+            if len(parts) != 3:
+                await event.reply('Используйте: .tr <код языка> <текс для перевода>')
+                return
+            
+            target_lang = parts[1]
+            text_to_translate = parts[2]
+
+            # Переводим текст
+            translated_text = translate_text(text_to_translate, target_lang)
+
+            # Изменяем исходное сообщение
+            await event.message.edit(translated_text)
 
     @client.on(events.NewMessage(pattern=r'\.info'))
     async def info_handler(event):
@@ -134,15 +103,15 @@ def register_event_handlers(client):
         current_status = "Активен"  # Устанавливаем текущий статус
 
         info_message = (
-            f"🔍 **Acroka - UserBot**:\n\n"
-            f"👤 **Владелец** {user_name}\n"
-            f"💻 **Платформа:** {device}\n"
-            f"⏳ **Uptime:** {uptime_str}\n"
-            f"✨ **Версия Telethon:** {telethon.__version__}\n" 
-            f"📥 **Sent:** {received_messages_count}\n"
-            f"📤 **Accepted:** {sent_messages_count}\n"
-            f"🟢 **Статус:** {current_status}\n"
-            f"👥 **Количество активных пользователей:** {len(active_users)}\n"
+            f"🔍 Acroka - UserBot:\n\n"
+            f"👤 Владелец {user_name}\n"
+            f"💻 Платформа: {device}\n"
+            f"⏳ Uptime: {uptime_str}\n"
+            f"✨ Версия Telethon: {telethon.version}\n" 
+            f"📥 Sent: {received_messages_count}\n"
+            f"📤 Accepted: {sent_messages_count}\n"
+            f"🟢 Статус: {current_status}\n"
+            f"👥 Количество активных пользователей: {len(active_users)}\n"
         )
 
         await event.edit(info_message)
@@ -153,15 +122,17 @@ def register_event_handlers(client):
         stdout, stderr = process.communicate()
         
         if process.returncode == 0:
-            result = "✅ **Пинг к Google: Время: {}мс**".format(stdout.decode().split('time=')[1].split(' ')[0])
+            result = "✅ Пинг к Google: Время: {}мс".format(stdout.decode().split('time=')[1].split(' ')[0])
         else:
-            result = "❌ **Ошибка пинга!**"
+            result = "❌ Ошибка пинга!"
 
         await event.edit(result)
+
 
 def generate_username():
     random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
     return f'acroka_{random_part}_bot'
+
 
 async def create_bot(client):
     botfather = await client.get_input_entity('BotFather')
@@ -195,6 +166,7 @@ async def create_bot(client):
     
     return username, user_id, token
 
+
 async def run_bot(client, token):
     bot_client = TelegramClient('bot', API_ID, API_HASH)
     await bot_client.start(bot_token=token)
@@ -202,6 +174,6 @@ async def run_bot(client, token):
     @bot_client.on(events.NewMessage(pattern='/start'))
     async def start_handler(event):
         await event.reply('👋 Привет! Я - Acroka, твой userbot!\n\n'
-                           '💡 Для просмотра основных команд используй `.help`.')
+                           '💡 Для просмотра основных команд используй .help.')
 
     await bot_client.run_until_disconnected()
