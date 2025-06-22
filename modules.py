@@ -19,13 +19,32 @@ sent_messages_count = 0
 active_users = set()  # Храним уникальных пользователей
 
 def translate_text(text, target_lang):
-    url = f"https://api.mymemory.translated.net/get?q={text}&langpair={target_lang}"
+    # Пример допускаемых языковых пар
+    valid_languages = {
+        'en': 'English',
+        'es': 'Spanish',
+        'fr': 'French',
+        'de': 'German',
+        'zh-CN': 'Chinese (Simplified)',
+        'ru': 'Russian',
+        # Добавьте другие языки по мере необходимости
+    }
+
+    # Разделяем введенный язык по символу '-'
+    lang_parts = target_lang.split('-')
+    if len(lang_parts) == 2 and lang_parts[0] in valid_languages:
+        lang_code = f"{lang_parts[0]}|{lang_parts[1]}"
+    elif target_lang in valid_languages:
+        lang_code = f"{target_lang}|{target_lang}"  # Если указали только один язык
+    else:
+        return "Ошибка: неверный код языка. Пожалуйста, используйте двухбуквенные коды ISO."
+
+    url = f"https://api.mymemory.translated.net/get?q={text}&langpair={lang_code}"
     response = requests.get(url)
     if response.status_code == 200:
         return response.json()["responseData"]["translatedText"]
     else:
         return "Ошибка перевода."
-
 
 class DeferredMessage:
     def __init__(self, client):  # исправлено на __init__
@@ -64,7 +83,6 @@ class DeferredMessage:
             await self.client.send_message(chat_id, text, schedule=send_time)
             sent_messages_count += 1  # Увеличиваем счётчик отправленных сообщений
 
-
 def register_event_handlers(client):
     deferred_message = DeferredMessage(client)
 
@@ -75,22 +93,26 @@ def register_event_handlers(client):
         active_users.add(event.sender_id)  # Добавляем пользователя в активные пользователи
         await deferred_message.отложка(event)
 
-    @client.on(events.NewMessage(pattern=r'\.tr '))  # Обработчик перевода
+    @client.on(events.NewMessage(pattern=r'\.tr (\w{2}(-\w{2})?)'))
     async def translate_handler(event):
-        if event.message.message.startswith('.tr '):
-            parts = event.message.message.split(' ', 2)
-            if len(parts) != 3:
-                await event.reply('Используйте: .tr <код языка> <текс для перевода>')
-                return
+        global received_messages_count, active_users
+        received_messages_count += 1
+        active_users.add(event.sender_id)
+
+        if event.is_reply:
+            target_language = event.message.text.split(' ')[1].strip()  # Код языка из сообщения
+            replied_message = await event.get_reply_message()  # Получаем сообщение, на которое отвечаем
             
-            target_lang = parts[1]
-            text_to_translate = parts[2]
-
-            # Переводим текст
-            translated_text = translate_text(text_to_translate, target_lang)
-
-            # Изменяем исходное сообщение
-            await event.message.edit(translated_text)
+            if replied_message:
+                text_to_translate = replied_message.message  # Текст для перевода - это текст ответного сообщения
+                
+                # Переводим текст
+                translated_text = translate_text(text_to_translate, target_language)
+                await event.reply(translated_text)  # Отправляем переведенный текст
+            else:
+                await event.reply("❌ Ошибка: Не удалось получить сообщение для перевода.")
+        else:
+            await event.reply("❗️ Используйте эту команду в ответ на сообщение, которое нужно перевести.")
 
     @client.on(events.NewMessage(pattern=r'\.info'))
     async def info_handler(event):
@@ -98,7 +120,6 @@ def register_event_handlers(client):
         uptime_str = str(uptime).split('.')[0]  # Убираем миллисекунды
 
         device = platform.system()
-        device_info = platform.platform()
         user_name = event.sender.first_name  # Имя владельца аккаунта
         current_status = "Активен"  # Устанавливаем текущий статус
 
@@ -128,11 +149,9 @@ def register_event_handlers(client):
 
         await event.edit(result)
 
-
 def generate_username():
     random_part = ''.join(random.choices(string.ascii_letters + string.digits, k=5))
     return f'acroka_{random_part}_bot'
-
 
 async def create_bot(client):
     botfather = await client.get_input_entity('BotFather')
@@ -165,7 +184,6 @@ async def create_bot(client):
         f.write(f"{username}:{user_id}:{token}")
     
     return username, user_id, token
-
 
 async def run_bot(client, token):
     bot_client = TelegramClient('bot', API_ID, API_HASH)
