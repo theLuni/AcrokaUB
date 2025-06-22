@@ -8,7 +8,7 @@ from telethon import events, TelegramClient
 from datetime import datetime, timedelta
 from config import TOKEN_FILE, API_ID, API_HASH
 import telethon 
-
+import requests
 
 # В начале файла
 start_time = datetime.now()  # Сохраняем время старта
@@ -18,6 +18,30 @@ received_messages_count = 0
 sent_messages_count = 0
 active_users = set()  # Храним уникальных пользователей
 
+def translate_text(text, target_lang):
+    url = f"https://api.mymemory.translated.net/get?q={text}&langpair={target_lang}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()["responseData"]["translatedText"]
+    else:
+        return "Ошибка перевода."
+
+@client.on(events.NewMessage)
+async def handler(event):
+    if event.message.message.startswith('.tr '):
+        parts = event.message.message.split(' ', 2)
+        if len(parts) != 3:
+            await event.reply('Используйте: .tr <код языка> <текс для перевода>')
+            return
+        
+        target_lang = parts[1]
+        text_to_translate = parts[2]
+
+        # Переводим текст
+        translated_text = translate_text(text_to_translate, target_lang)
+
+        # Изменяем исходное сообщение
+        await event.message.edit(translated_text)
 
 # Создание экземпляра переводчика
 def register_event_handlers(client):
