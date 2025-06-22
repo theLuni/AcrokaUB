@@ -19,7 +19,7 @@ sent_messages_count = 0
 active_users = set()  # Храним уникальных пользователей
 
 def translate_text(text, target_lang):
-    # Пример допускаемых языковых пар
+    # Список допустимых языковых пар
     valid_languages = {
         'en': 'English',
         'es': 'Spanish',
@@ -30,16 +30,10 @@ def translate_text(text, target_lang):
         # Добавьте другие языки по мере необходимости
     }
 
-    # Разделяем введенный язык по символу '-'
-    lang_parts = target_lang.split('-')
-    if len(lang_parts) == 2 and lang_parts[0] in valid_languages:
-        lang_code = f"{lang_parts[0]}|{lang_parts[1]}"
-    elif target_lang in valid_languages:
-        lang_code = f"{target_lang}|{target_lang}"  # Если указали только один язык
-    else:
-        return "Ошибка: неверный код языка. Пожалуйста, используйте двухбуквенные коды ISO."
-
-    url = f"https://api.mymemory.translated.net/get?q={text}&langpair={lang_code}"
+    # Проверяем, есть ли указанный язык в списке
+    if target_lang not in valid_languages:
+        return "Ошибка: неверный код языка. Пожалуйста, используйте двухбуквенные коды ISO, например: 'en', 'ru' и т.д."
+    url = f"https://api.mymemory.translated.net/get?q={text}&langpair={target_lang}|en" 
     response = requests.get(url)
     if response.status_code == 200:
         return response.json()["responseData"]["translatedText"]
@@ -122,7 +116,6 @@ def register_event_handlers(client):
         device = platform.system()
         user_name = event.sender.first_name  # Имя владельца аккаунта
         current_status = "Активен"  # Устанавливаем текущий статус
-
         info_message = (
             f"🔍 Acroka - UserBot:\n\n"
             f"👤 Владелец {user_name}\n"
@@ -192,6 +185,6 @@ async def run_bot(client, token):
     @bot_client.on(events.NewMessage(pattern='/start'))
     async def start_handler(event):
         await event.reply('👋 Привет! Я - Acroka, твой userbot!\n\n'
-                           '💡 Для просмотра основных команд используй .help.')
+                           '💡 Для просмотра основных команд используй .info.')
 
     await bot_client.run_until_disconnected()
