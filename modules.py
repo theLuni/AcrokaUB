@@ -258,6 +258,7 @@ async def calc_handler(event):
 
 
 def register_event_handlers(client):
+    deferred_message = DeferredMessage(client) 
     @client.on(events.NewMessage(pattern=r'\.update'))
     async def update_handler(event):
         # URL репозитория на GitHub от ItKenneth
