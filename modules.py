@@ -58,9 +58,10 @@ async def handle_help(event):
         "🏓 **ping** - пинг системы",
         "❓ **help** - посмотреть команды",
         "📦 **loadmod** - загрузить модуль",
-        "🔄 **unloadmod** - выгрузить модуль",
+        "🔄 **unloadmod** - удалить модуль",
+        "📜 **modload** - выгрузить модуль",
         "⏳ **deferral** - поставить отложенные сообщения",
-        "🧮 **calc** - калькулятор"
+        "🧮 **calc** - калькулятор\n"
         "💻 **tr** - переводчик"
     ]
 
@@ -273,7 +274,7 @@ async def calc_handler(event):
 
 def register_event_handlers(client):
     deferred_message = DeferredMessage(client) 
-    @bot_client.on(events.NewMessage(pattern=r'\.modload (\w+)'))
+    @client.on(events.NewMessage(pattern=r'\.modload (\w+)'))
     async def modload_command(event):
         module_name = event.pattern_match.group(1)
 
