@@ -201,15 +201,14 @@ async def translate_handler(event):
     else:
         await event.reply("❗️ Используйте эту команду в ответ на сообщение, которое нужно перевести.")
 
-
 class DeferredMessage:
-    def __init__(self, client):  # Исправлено на __init__
+    def __init__(self, client):
         self.client = client
         self.interval = 3600  # По умолчанию, 1 час
         self.message_count = 10  # По умолчанию, 10 сообщений
 
     async def отложка(self, event):
-        global sent_messages_count  # Убедитесь, что эта переменная где-то объявлена
+        global sent_messages_count
         args = event.message.message.split(' ', 3)
 
         if len(args) < 4:
@@ -238,7 +237,14 @@ class DeferredMessage:
             send_time = datetime.now() + timedelta(seconds=self.interval * i)
             await self.client.send_message(chat_id, text, schedule=send_time)
             sent_messages_count += 1  # Увеличиваем счётчик отправленных сообщений
-            
+
+    async def handler(self, event):
+        global received_messages_count, active_users
+        received_messages_count += 1  # Увеличиваем счётчик полученных сообщений
+        active_users.add(event.sender_id)  # Добавляем пользователя в активные пользователи
+        await self.отложка(event)  # Вызов метода отложка
+
+
 async def calc_handler(event):
     # Извлекаем математическое выражение из сообщения
     expression = event.message.text.split('.calc ')[1].strip()  # Получаем выражение после команды
@@ -308,11 +314,8 @@ def register_event_handlers(client):
             await event.reply(f"Ошибка: {str(e)}")
     
     @client.on(events.NewMessage(pattern=r'\.deferral'))
-    async def handler(event):
-        global received_messages_count, active_users  # Убедитесь, что эти переменные где-то объявлены
-        received_messages_count += 1  # Увеличиваем счётчик полученных сообщений
-        active_users.add(event.sender_id)  # Добавляем пользователя в активные пользователи
-        await deferred_message.отложка(event)
+    async def handler(event):  # Добавляем пользователя в активные пользователи
+        await deferred_message.handler(event)
 
     @client.on(events.NewMessage(pattern=r'\.tr (\w{2})'))
     async def handler(event):
