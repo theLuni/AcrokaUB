@@ -74,24 +74,34 @@ async def check_token(token):
 
 async def get_token(username):
     botfather_username = '@BotFather'
+    
+    # Запрашиваем токен у BotFather
+    await client.send_message(botfather_username, '/token')  # Запрос токена
+    await asyncio.sleep(2)  # Ожидание для получения ответа
+    await client.send_message(botfather_username, f'@{username}')  # Указание юзернейма
+    await asyncio.sleep(2)  # Ожидание для получения ответа
+    
+    async for message in client.iter_messages(botfather_username, limit=10):
+        if "You can use this token to access HTTP API:" in message.text:
+            token_line = message.text.split("You can use this token to access HTTP API:")[1].strip()
+            token = token_line.split()[0].replace("`", "").strip()  # Убираем обратные кавычки и пробелы
+            
+            # Устанавливаем пользовательское фото
+            await client.send_message(botfather_username, '/setuserpic')
+            await asyncio.sleep(2)
+            await client.send_message(botfather_username, f'@{username}')  # Отправляем юзернейм
+            await asyncio.sleep(2)
 
-    try:
-        await client.send_message(botfather_username, '/token')
-        await asyncio.sleep(2)
-        await client.send_message(botfather_username, f'@{username}')
-        await asyncio.sleep(2)
-
-        async for message in client.iter_messages(botfather_username, limit=10):
-            if "You can use this token to access HTTP API:" in message.text:
-                token_line = message.text.split("You can use this token to access HTTP API:")[1].strip()
-                token = token_line.split()[0].replace("`", "").strip()  # Убираем обратные кавычки и пробелы
-                return token
-
-    except Exception as e:
-        print(f"Ошибка при получении токена: {e}")
+            # Путь к изображению
+            photo_path = os.path.abspath('source/pic.png')
+            if os.path.exists(photo_path):
+                await client.send_file(botfather_username, photo_path)  # Отправляем фото BotFather
+            else:
+                print(f"Ошибка: Файл '{photo_path}' не существует.")
+                
+            return username, token  # Возвращаем юзернейм и токен
 
     return None
-
 async def main():
     try:
         await client.start()
