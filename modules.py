@@ -40,31 +40,27 @@ loaded_modules = []  # Список загруженных модулей
 
 
 def get_module_info(module_name):
-    """Возвращает информацию о модуле, если она имеется, анализируя первые строки файла."""
     try:
         module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
         with open(module_path, 'r', encoding='utf-8') as f:
-            # Считываем первые четыре строки
             lines = [f.readline().strip() for _ in range(4)]
 
-        # Инициализация значений
         name = "Неизвестно"
         commands = "Неизвестно"
 
-        # Извлечение информации из строк
         for line in lines:
             if line.startswith("#"):
-                key, value = line[1:].split(":", 1)  # Разделяем на ключ и значение
+                key, value = line[1:].split(":", 1)
                 if key.strip() == "name":
                     name = value.strip()
                 elif key.strip() == "commands":
                     commands = value.strip()
-        
+
         return f"{name} ({commands})"
 
-    except Exception as e:
-        print(f"Ошибка при получении информации о модуле {module_name}: {e}")
-        return None
+    except Exception:
+        return f"{module_name} (Неизвестно)"
+
         
 def get_loaded_modules():
     modules = []
