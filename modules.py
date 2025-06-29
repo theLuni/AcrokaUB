@@ -39,44 +39,56 @@ loaded_modules = []  # Список загруженных модулей
 
 
 
-def get_loaded_modules():
-    modules = []
-    if os.path.exists(MODS_DIRECTORY):
-        for filename in os.listdir(MODS_DIRECTORY):
-            if filename.endswith(".py"):
-                module_name = filename[:-3]  # Убираем ".py"
-                modules.append(module_name)
-    return modules
 
+def get_module_info(module_name):
+    """ Возвращает информацию о модуле, если она имеется. """
+    try:
+        module_spec = importlib.util.spec_from_file_location(module_name, os.path.join(MODS_DIRECTORY, f"{module_name}.py"))
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+        
+        # Предполагаем, что в каждом модуле есть атрибуты name, about, commands, by
+        name = getattr(module, 'name', 'Неизвестно')
+        about = getattr(module, 'about', 'Неизвестно')
+        commands = getattr(module, 'commands', 'Нет команд')
+        by = getattr(module, 'by', 'Неизвестно')
+        
+        module_info = f"#name: {name}\n#about: {about}\n#commands: {commands}\n#by: {by}\n"
+        return module_info
 
-# Функция для обработки команды .help
+    except Exception as e:
+        print(f"Ошибка при получении информации о модуле {module_name}: {e}")
+        return None
 
 async def handle_help(event):
     modules_list = get_loaded_modules()
     commands_list = [
-        "📜 **info** - информация о юзерботе",
-        "🏓 **ping** - пинг системы",
-        "❓ **help** - посмотреть команды",
-        "📦 **loadmod** - загрузить модуль",
-        "🔄 **unloadmod** - удалить модуль",
-        "📜 **modload** - выгрузить модуль",
-        "⏳ **deferral** - поставить отложенные сообщения",
-        "🧮 **calc** - калькулятор\n"
-        "💻 **tr** - переводчик"
+        "📜 info - информация о юзерботе",
+        "🏓 ping - пинг системы",
+        "❓ help - посмотреть команды",
+        "📦 loadmod - загрузить модуль",
+        "🔄 unloadmod - удалить модуль",
+        "📜 modload - выгрузить модуль",
+        "⏳ deferral - поставить отложенные сообщения",
+        "🧮 calc - калькулятор\n"
+        "💻 tr - переводчик"
     ]
 
     # Создаем основной текст сообщения
-    new_message_text = "💡 **Команды юзербота**\n\n"
+    new_message_text = "💡 Команды юзербота\n\n"
 
     # Создаем список загруженных модулей
     if modules_list:
-        new_message_text += "✅ **Загруженные модули:**\n"
-        new_message_text += "\n".join(f"   - `{module}`" for module in modules_list)
+        new_message_text += "✅ Загруженные модули:\n"
+        for module in modules_list:
+            module_info = get_module_info(module)
+            if module_info:
+                new_message_text += f"   - {module_info}\n"
     else:
-        new_message_text += "❌ **В данный момент нет загруженных модулей.**"
+        new_message_text += "❌ В данный момент нет загруженных модулей."
 
     # Добавляем доступные команды
-    new_message_text += "\n\n✅ **Доступные команды:**\n"
+    new_message_text += "\n✅ Доступные команды:\n"
     new_message_text += "\n".join(commands_list)
 
     # Отправляем готовое сообщение
@@ -84,8 +96,7 @@ async def handle_help(event):
         await event.message.edit(new_message_text)
     except Exception as e:
         print(f"Ошибка при редактировании сообщения: {e}")
-        
-        
+
 async def load_module(module_name):
     try:
         module_spec = importlib.util.spec_from_file_location(module_name, os.path.join(MODS_DIRECTORY, f"{module_name}.py"))
@@ -96,7 +107,6 @@ async def load_module(module_name):
     except Exception as e:
         print(f"Ошибка при загрузке модуля {module_name}: {e}")
         return None
-
 # Функция для обработки команды .loadmod
 async def handle_loadmod(event, client):
     replied_message = await event.get_reply_message()
