@@ -38,7 +38,14 @@ loaded_modules = []  # Список загруженных модулей
 # Функция для получения загруженных модулей
 
 
-
+def get_loaded_modules():
+    modules = []
+    if os.path.exists(MODS_DIRECTORY):
+        for filename in os.listdir(MODS_DIRECTORY):
+            if filename.endswith(".py"):
+                module_name = filename[:-3]  # Убираем ".py"
+                modules.append(module_name)
+    return modules
 
 def get_module_info(module_name):
     """ Возвращает информацию о модуле, если она имеется. """
