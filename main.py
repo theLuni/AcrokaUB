@@ -174,7 +174,7 @@ async def main():
                 print("❌ Недействительный токен бота")
                 return
 
-        register_event_handlers(client)
+        register_event_handlers(client, get_prefix())
         bot_task = asyncio.create_task(run_bot(token))
         
         await client.send_message(f'@{username}', '/start')
