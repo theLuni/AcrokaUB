@@ -189,7 +189,8 @@ async def main():
     try:
         # Подключаемся к Telegram
         await client.start()
-        print(f"🔑 Авторизован как: {(await client.get_me()).first_name}")
+        me = await client.get_me()
+        print(f"🔑 Авторизован как: {me.first_name}")
 
         # Проверяем наличие файла с токеном
         if not os.path.exists(BOT_TOKEN_FILE) or os.stat(BOT_TOKEN_FILE).st_size == 0:
@@ -197,39 +198,48 @@ async def main():
             
             if choice == 'да':
                 username = input("Введите юзернейм бота (без @): ").strip()
-                username, token = await load_existing_bot(username)
+                result = await load_existing_bot(username)
                 
-                if not token:
+                if not result or len(result) != 2:
                     print("🛑 Продолжение невозможно без токена бота")
                     return
+                username, token = result
             else:
-                username, user_id, token = await create_new_bot()
-                if not token:
+                result = await create_new_bot()
+                if not result or len(result) != 3:
                     print("🛑 Продолжение невозможно без токена бота")
                     return
+                username, user_id, token = result
         else:
             # Читаем существующий токен
-            with open(BOT_TOKEN_FILE, 'r') as f:
-                data = f.read().strip().split(':')
-                if len(data) == 3:
-                    username, user_id, token = data
-                else:
-                    print("❌ Неверный формат файла токена")
-                    return
+            try:
+                with open(BOT_TOKEN_FILE, 'r') as f:
+                    data = f.read().strip().split(':')
+                    if len(data) == 3:
+                        username, user_id, token = data
+                    else:
+                        print("❌ Неверный формат файла токена (ожидается username:user_id:token)")
+                        return
 
-            # Проверяем токен
-            if not await check_bot_token(token):
-                print("❌ Недействительный токен бота")
+                # Проверяем токен
+                if not await check_bot_token(token):
+                    print("❌ Недействительный токен бота")
+                    return
+            except Exception as e:
+                print(f"❌ Ошибка чтения файла токена: {e}")
                 return
 
         # Регистрируем обработчики команд для основного клиента
         register_event_handlers(client)
         
-        # Запускаем бота (только с токеном, как требует функция)
+        # Запускаем бота
         bot_task = asyncio.create_task(run_bot(token))
         
         # Отправляем тестовое сообщение
-        await client.send_message(f'@{username}', '/start')
+        try:
+            await client.send_message(f'@{username}', '/start')
+        except Exception as e:
+            print(f"⚠️ Не удалось отправить тестовое сообщение: {e}")
         
         # Ожидаем завершения
         await bot_task
@@ -237,7 +247,7 @@ async def main():
     except Exception as e:
         print(f"🛑 Критическая ошибка: {e}")
     finally:
-        if await client.is_connected():
+        if client.is_connected():  # Убрали await, так как is_connected() не корутина
             await client.disconnect()
             
 if __name__ == '__main__':
