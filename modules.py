@@ -395,45 +395,36 @@ def register_event_handlers(client, prefix=None):
 
 async def run_bot(token):
     print(pyfiglet.figlet_format("Acroka"))
-    print("🚀 Запуск юзербота...")
+    print("🚀 Запуск бота...")
     
     try:
         await download_gif()
         await load_all_modules()
 
-        # Сначала запускаем бота с токеном
         bot_client = TelegramClient(f'acroka_bot_{API_ID}', API_ID, API_HASH)
-        await bot_client.start(bot_token=BOT_TOKEN)
+        await bot_client.start(bot_token=token)
 
-        # Затем регистрируем обработчики
-        register_event_handlers(bot_client)
-
-        # Отправляем сообщение о запуске
-        async def send_start_message():
+        @bot_client.on(events.NewMessage(pattern='/start'))
+        async def start_handler_internal(event):
             try:
                 if os.path.exists(GIF_FILENAME):
                     await bot_client.send_file(
-                        await bot_client.get_me(),
+                        event.chat_id,
                         GIF_FILENAME,
-                        caption='👋 Юзербот Акрока успешно запущен!\n📌 Используй .help для списка команд',
+                        caption='👋 Привет! Я - Acroka UserBot!\n📌 Используй .help для списка команд',
                         parse_mode='markdown'
                     )
                 else:
-                    await bot_client.send_message(
-                        await bot_client.get_me(),
-                        '👋 Юзербот Акрока успешно запущен!'
-                    )
+                    await event.respond('👋 Привет! Я - Acroka UserBot!')
             except Exception as e:
-                print(f"⚠️ Ошибка при отправке start сообщения: {e}")
+                print(f"⚠️ Ошибка при обработке /start: {e}")
 
-        # Запускаем отправку сообщения в фоне
-        asyncio.create_task(send_start_message())
-
-        print("✅ Юзербот успешно запущен!")
+        register_event_handlers(bot_client)
+        print("✅ Бот запущен!")
         await bot_client.run_until_disconnected()
 
     except Exception as e:
-        print(f"🛑 Критическая ошибка при запуске юзербота: {e}")
+        print(f"🛑 Критическая ошибка при запуске бота: {e}")
     finally:
         if 'bot_client' in locals() and bot_client.is_connected():
             await bot_client.disconnect()
