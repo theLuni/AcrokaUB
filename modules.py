@@ -304,19 +304,37 @@ async def run_bot(token):
         if 'bot_client' in locals() and bot_client.is_connected():
             await bot_client.disconnected()
             
-def register_event_handlers(client):
+# Добавьте в начало файла
+PREFIX_FILE = os.path.join('source', 'prefix.txt')
+DEFAULT_PREFIX = '.'
+
+def get_prefix():
+    """Получение текущего префикса команд"""
+    if os.path.exists(PREFIX_FILE):
+        with open(PREFIX_FILE, 'r') as f:
+            prefix = f.read().strip()
+            return prefix if len(prefix) == 1 else DEFAULT_PREFIX
+    return DEFAULT_PREFIX
+
+# Обновите функцию register_event_handlers:
+def register_event_handlers(client, prefix=None):
+    if prefix is None:
+        prefix = get_prefix()
+        
     deferred = DeferredMessage(client)
+    
 
     handlers = [
-        (r'\.help$', handle_help),
-        (r'\.info$', handle_info),
-        (r'\.ping$', handle_ping),
-        (r'\.loadmod$', handle_loadmod),
-        (r'\.unloadmod (\w+)', handle_unloadmod),
-        (r'\.tr (\w{2})$', translate_handler),
-        (r'\.calc (.+)', calc_handler),
-        (r'\.deferral', deferred.handler),
-        (r'\.update$', update_handler)
+        (rf'^{prefix}help$', handle_help),
+        (rf'^{prefix}info$', handle_info),
+        (rf'^{prefix}ping$', handle_ping),
+        (rf'^{prefix}loadmod$', handle_loadmod),
+        (rf'^{prefix}unloadmod (\w+)', handle_unloadmod),
+        (rf'^{prefix}tr (\w{{2}})$', translate_handler),
+        (rf'^{prefix}calc (.+)', calc_handler),
+        (rf'^{prefix}deferral', deferred.handler),
+        (rf'^{prefix}update$', update_handler),
+        (rf'^{prefix}setprefix (.+)$', handle_setprefix)  # Новая команда
     ]
 
     for pattern, handler in handlers:
@@ -325,6 +343,26 @@ def register_event_handlers(client):
             events.NewMessage(pattern=pattern)
         )
 
+# Добавьте новую функцию обработки команды setprefix
+async def handle_setprefix(event):
+    global received_messages_count, active_users
+    received_messages_count += 1
+    active_users.add(event.sender_id)
+
+    new_prefix = event.pattern_match.group(1).strip()
+    
+    if len(new_prefix) != 1:
+        await event.edit("❌ Префикс должен быть одним символом!")
+        return
+    
+    try:
+        os.makedirs('source', exist_ok=True)
+        with open(PREFIX_FILE, 'w') as f:
+            f.write(new_prefix)
+        
+        await event.edit(f"✅ Префикс изменён на '{new_prefix}'! Перезапустите бота для применения изменений.")
+    except Exception as e:
+        await event.edit(f"❌ Ошибка при изменении префикса: {str(e)}")
 def generate_username():
     random_part = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
     return f'acroka_{random_part}_bot'
