@@ -4,6 +4,7 @@ import string
 import subprocess
 import asyncio
 import platform
+import sys
 from telethon import events, TelegramClient
 from datetime import datetime, timedelta
 import telethon
@@ -12,7 +13,7 @@ import pyfiglet
 from langdetect import detect, DetectorFactory
 import re
 import importlib.util
-from config import API_ID, API_HASH
+from config import API_ID, API_HASH, BOT_TOKEN
 
 # Инициализация
 DetectorFactory.seed = 0
@@ -25,9 +26,17 @@ active_users = set()
 MODS_DIRECTORY = 'source/mods/'
 loaded_modules = []
 
-client = TelegramClient('acroka_session_{API_ID}', API_ID, API_HASH)
+client = TelegramClient(f'acroka_session_{API_ID}', API_ID, API_HASH)
 GIF_URL = "https://tenor.com/vzU4iQebtgZ.gif"
 GIF_FILENAME = "welcome.gif"
+PREFIX_FILE = os.path.join('source', 'prefix.txt')
+DEFAULT_PREFIX = '.'
+RESTART_CMD = [sys.executable] + sys.argv
+
+async def is_owner(event):
+    """Проверяет, является ли отправитель владельцем сессии."""
+    me = await event.client.get_me()
+    return event.sender_id == me.id
 
 def get_module_info(module_name):
     try:
@@ -53,29 +62,50 @@ def get_loaded_modules():
     if os.path.exists(MODS_DIRECTORY):
         for filename in os.listdir(MODS_DIRECTORY):
             if filename.endswith(".py"):
-                module_name = filename[:-3]  # Убираем ".py"
+                module_name = filename[:-3]
                 modules.append(module_name)
     return modules
-    
+
+def get_prefix():
+    """Получение текущего префикса команд"""
+    if os.path.exists(PREFIX_FILE):
+        with open(PREFIX_FILE, 'r') as f:
+            prefix = f.read().strip()
+            return prefix if len(prefix) == 1 else DEFAULT_PREFIX
+    return DEFAULT_PREFIX
+
+async def restart_bot(event=None):
+    """Функция для перезапуска бота"""
+    if event:
+        await event.edit("🔄 Юзербот Акрока перезагружается, пожалуйста подождите...")
+    print("🔄 Перезапуск юзербота...")
+    os.execv(sys.executable, RESTART_CMD)
+
 async def handle_help(event):
+    if not await is_owner(event):
+        return
+    
     global received_messages_count, active_users
     received_messages_count += 1
     active_users.add(event.sender_id)
 
     modules_list = get_loaded_modules()
+    prefix = get_prefix()
     base_commands = [
-        "📜 info - информация о юзерботе",
-        "🏓 ping - пинг системы",
-        "❓ help - посмотреть команды",
-        "📦 loadmod - загрузить модуль",
-        "🔄 unloadmod - удалить модуль",
-        "⏳ deferral - отложенные сообщения",
-        "🧮 calc - калькулятор",
-        "💻 tr - переводчик",
-        "🔄 update - обновить бота"
+        f"📜 {prefix}info - информация о юзерботе",
+        f"🏓 {prefix}ping - пинг системы",
+        f"❓ {prefix}help - посмотреть команды",
+        f"📦 {prefix}loadmod - загрузить модуль",
+        f"🔄 {prefix}unloadmod - удалить модуль",
+        f"⏳ {prefix}deferral - отложенные сообщения",
+        f"🧮 {prefix}calc - калькулятор",
+        f"💻 {prefix}tr - переводчик",
+        f"🔄 {prefix}update - обновить бота",
+        f"⚙️ {prefix}setprefix - изменить префикс команд",
+        f"🔄 {prefix}restart - перезапустить юзербота"
     ]
 
-    message = "💡 Команды юзербота\n\n"
+    message = f"💡 Команды юзербота (префикс: '{prefix}')\n\n"
     if modules_list:
         message += "✅ Загруженные модули:\n"
         message += "\n".join(f"   - {get_module_info(m)}" for m in modules_list)
@@ -83,9 +113,12 @@ async def handle_help(event):
         message += "❌ Нет загруженных модулей.\n"
     
     message += "\n✅ Основные команды:\n" + "\n".join(base_commands)
-    await event.message.edit(message)
+    await event.edit(message)
 
 async def handle_info(event):
+    if not await is_owner(event):
+        return
+    
     global received_messages_count, active_users
     received_messages_count += 1
     active_users.add(event.sender_id)
@@ -107,6 +140,9 @@ async def handle_info(event):
     await event.edit(info_msg)
 
 async def handle_ping(event):
+    if not await is_owner(event):
+        return
+    
     global received_messages_count, active_users
     received_messages_count += 1
     active_users.add(event.sender_id)
@@ -146,6 +182,9 @@ async def load_module(module_name):
         return None
 
 async def handle_loadmod(event):
+    if not await is_owner(event):
+        return
+    
     if event.is_reply:
         reply = await event.get_reply_message()
         if reply.media:
@@ -161,16 +200,24 @@ async def handle_loadmod(event):
     await event.edit("❌ Ответьте на сообщение с файлом .py")
 
 async def handle_unloadmod(event):
+    if not await is_owner(event):
+        return
+    
     module_name = event.pattern_match.group(1)
     module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
     
     if os.path.exists(module_path):
         os.remove(module_path)
+        if module_name in loaded_modules:
+            loaded_modules.remove(module_name)
         await event.edit(f"✅ Модуль '{module_name}' удалён")
     else:
         await event.edit(f"❌ Модуль '{module_name}' не найден")
 
 async def translate_handler(event):
+    if not await is_owner(event):
+        return
+    
     global received_messages_count, active_users
     received_messages_count += 1
     active_users.add(event.sender_id)
@@ -195,6 +242,9 @@ class DeferredMessage:
         self.client = client
     
     async def handler(self, event):
+        if not await is_owner(event):
+            return
+        
         global received_messages_count, active_users, sent_messages_count
         received_messages_count += 1
         active_users.add(event.sender_id)
@@ -204,7 +254,7 @@ class DeferredMessage:
             count = int(count)
             interval = int(minutes) * 60
         except:
-            await event.edit("❗ Использование: .deferral <кол-во> <мин> <текст>")
+            await event.edit(f"❗ Использование: {get_prefix()}deferral <кол-во> <мин> <текст>")
             return
 
         msg = await event.reply(f"✅ Запланировано {count} сообщений с интервалом {minutes} мин")
@@ -220,6 +270,9 @@ class DeferredMessage:
             await msg.edit(f"📬 Отправлено {i+1}/{count}")
 
 async def calc_handler(event):
+    if not await is_owner(event):
+        return
+    
     global received_messages_count, active_users
     received_messages_count += 1
     active_users.add(event.sender_id)
@@ -232,24 +285,71 @@ async def calc_handler(event):
         await event.edit(f"❌ Ошибка: {str(e)}")
 
 async def update_handler(event):
+    if not await is_owner(event):
+        return
+    
     try:
-        await event.edit("🔄 Обновление бота...")
+        await event.edit("🔄 Проверка обновлений юзербота...")
         repo = "https://github.com/ItKenneth/AcrokaUB.git"
         
-        if not os.path.exists('AcrokaUB'):
-            subprocess.run(['git', 'clone', repo, 'AcrokaUB'], check=True)
-        else:
-            subprocess.run(['git', '-C', 'AcrokaUB', 'pull'], check=True)
+        # Создаем временную директорию для обновления
+        temp_dir = "temp_update"
+        if os.path.exists(temp_dir):
+            subprocess.run(['rm', '-rf', temp_dir])
         
-        for file in ['modules.py', 'config.py', 'main.py']:
-            src = os.path.join('AcrokaUB', file)
+        # Клонируем репозиторий
+        subprocess.run(['git', 'clone', repo, temp_dir], check=True)
+        
+        # Проверяем наличие важных файлов
+        required_files = ['modules.py', 'config.py', 'main.py']
+        for file in required_files:
+            if not os.path.exists(os.path.join(temp_dir, file)):
+                raise Exception(f"Файл {file} не найден в обновлении")
+        
+        # Копируем файлы
+        for file in required_files:
+            src = os.path.join(temp_dir, file)
             if os.path.exists(src):
                 os.replace(src, file)
         
-        await event.edit("✅ Обновлено! Перезапуск...")
-        os.execv(sys.executable, ['python'] + sys.argv)
+        # Удаляем временную директорию
+        subprocess.run(['rm', '-rf', temp_dir])
+        
+        await event.edit("✅ Юзербот успешно обновлен! Перезагрузка...")
+        await restart_bot()
     except Exception as e:
-        await event.edit(f"❌ Ошибка: {str(e)}")
+        await event.edit(f"❌ Ошибка при обновлении: {str(e)}")
+
+async def handle_setprefix(event):
+    if not await is_owner(event):
+        return
+    
+    global received_messages_count, active_users
+    received_messages_count += 1
+    active_users.add(event.sender_id)
+
+    new_prefix = event.pattern_match.group(1).strip()
+    
+    if len(new_prefix) != 1:
+        await event.edit("❌ Префикс должен быть одним символом!")
+        return
+    
+    try:
+        os.makedirs('source', exist_ok=True)
+        with open(PREFIX_FILE, 'w') as f:
+            f.write(new_prefix)
+        
+        await event.edit(f"✅ Префикс изменён на '{new_prefix}'! Перезагрузка...")
+        await asyncio.sleep(2)
+        await restart_bot()
+    except Exception as e:
+        await event.edit(f"❌ Ошибка при изменении префикса: {str(e)}")
+
+async def handle_restart(event):
+    if not await is_owner(event):
+        return
+    
+    await restart_bot(event)
 
 async def load_all_modules():
     if os.path.exists(MODS_DIRECTORY):
@@ -268,72 +368,22 @@ async def download_gif():
         except Exception as e:
             print(f"Ошибка загрузки GIF: {e}")
 
-async def run_bot(token):
-    print(pyfiglet.figlet_format("Acroka"))
-    print("🚀 Запуск бота...")
-    
-    try:
-        await download_gif()
-        await load_all_modules()
-
-        bot_client = TelegramClient(f'acroka_bot_{API_ID}', API_ID, API_HASH)
-        await bot_client.start(bot_token=token)
-
-        @bot_client.on(events.NewMessage(pattern='/start'))
-        async def start_handler_internal(event):
-            try:
-                if os.path.exists(GIF_FILENAME):
-                    await bot_client.send_file(
-                        event.chat_id,
-                        GIF_FILENAME,
-                        caption='👋 Привет! Я - Acroka UserBot!\n📌 Используй .help для списка команд',
-                        parse_mode='markdown'
-                    )
-                else:
-                    await event.respond('👋 Привет! Я - Acroka UserBot!')
-            except Exception as e:
-                print(f"⚠️ Ошибка при обработке /start: {e}")
-
-        print("✅ Бот запущен!")
-        await bot_client.run_until_disconnected()
-
-    except Exception as e:
-        print(f"🛑 Критическая ошибка при запуске бота: {e}")
-    finally:
-        if 'bot_client' in locals() and bot_client.is_connected():
-            await bot_client.disconnect()
-            
-# Добавьте в начало файла
-PREFIX_FILE = os.path.join('source', 'prefix.txt')
-DEFAULT_PREFIX = '.'
-
-def get_prefix():
-    """Получение текущего префикса команд"""
-    if os.path.exists(PREFIX_FILE):
-        with open(PREFIX_FILE, 'r') as f:
-            prefix = f.read().strip()
-            return prefix if len(prefix) == 1 else DEFAULT_PREFIX
-    return DEFAULT_PREFIX
-
-# Обновите функцию register_event_handlers:
-def register_event_handlers(client, prefix=None):
-    if prefix is None:
-        prefix = get_prefix()
-        
+def register_event_handlers(client):
+    prefix = get_prefix()
     deferred = DeferredMessage(client)
     
-
     handlers = [
         (rf'^{prefix}help$', handle_help),
         (rf'^{prefix}info$', handle_info),
         (rf'^{prefix}ping$', handle_ping),
         (rf'^{prefix}loadmod$', handle_loadmod),
-        (rf'^{prefix}unloadmod (\w+)', handle_unloadmod),
+        (rf'^{prefix}unloadmod (\w+)$', handle_unloadmod),
         (rf'^{prefix}tr (\w{{2}})$', translate_handler),
-        (rf'^{prefix}calc (.+)', calc_handler),
-        (rf'^{prefix}deferral', deferred.handler),
+        (rf'^{prefix}calc (.+)$', calc_handler),
+        (rf'^{prefix}deferral (\d+) (\d+) (.+)$', deferred.handler),
         (rf'^{prefix}update$', update_handler),
-        (rf'^{prefix}setprefix (.+)$', handle_setprefix)  # Новая команда
+        (rf'^{prefix}setprefix (.+)$', handle_setprefix),
+        (rf'^{prefix}restart$', handle_restart)
     ]
 
     for pattern, handler in handlers:
@@ -342,26 +392,54 @@ def register_event_handlers(client, prefix=None):
             events.NewMessage(pattern=pattern)
         )
 
-# Добавьте новую функцию обработки команды setprefix
-async def handle_setprefix(event):
-    global received_messages_count, active_users
-    received_messages_count += 1
-    active_users.add(event.sender_id)
-
-    new_prefix = event.pattern_match.group(1).strip()
-    
-    if len(new_prefix) != 1:
-        await event.edit("❌ Префикс должен быть одним символом!")
-        return
+async def run_bot():
+    print(pyfiglet.figlet_format("Acroka"))
+    print("🚀 Запуск юзербота...")
     
     try:
-        os.makedirs('source', exist_ok=True)
-        with open(PREFIX_FILE, 'w') as f:
-            f.write(new_prefix)
-        
-        await event.edit(f"✅ Префикс изменён на '{new_prefix}'! Перезапустите бота для применения изменений.")
+        await download_gif()
+        await load_all_modules()
+
+        # Сначала запускаем бота с токеном
+        bot_client = TelegramClient(f'acroka_bot_{API_ID}', API_ID, API_HASH)
+        await bot_client.start(bot_token=BOT_TOKEN)
+
+        # Затем регистрируем обработчики
+        register_event_handlers(bot_client)
+
+        # Отправляем сообщение о запуске
+        async def send_start_message():
+            try:
+                if os.path.exists(GIF_FILENAME):
+                    await bot_client.send_file(
+                        await bot_client.get_me(),
+                        GIF_FILENAME,
+                        caption='👋 Юзербот Акрока успешно запущен!\n📌 Используй .help для списка команд',
+                        parse_mode='markdown'
+                    )
+                else:
+                    await bot_client.send_message(
+                        await bot_client.get_me(),
+                        '👋 Юзербот Акрока успешно запущен!'
+                    )
+            except Exception as e:
+                print(f"⚠️ Ошибка при отправке start сообщения: {e}")
+
+        # Запускаем отправку сообщения в фоне
+        asyncio.create_task(send_start_message())
+
+        print("✅ Юзербот успешно запущен!")
+        await bot_client.run_until_disconnected()
+
     except Exception as e:
-        await event.edit(f"❌ Ошибка при изменении префикса: {str(e)}")
+        print(f"🛑 Критическая ошибка при запуске юзербота: {e}")
+    finally:
+        if 'bot_client' in locals() and bot_client.is_connected():
+            await bot_client.disconnect()
+
 def generate_username():
     random_part = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
     return f'acroka_{random_part}_bot'
+
+if __name__ == "__main__":
+    asyncio.run(run_bot())
