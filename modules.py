@@ -66,45 +66,13 @@ def get_loaded_modules():
                 modules.append(module_name)
     return modules
 
-import logging
-from pathlib import Path
-
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('acroka_bot.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
 def get_prefix():
-    """
-    Получение текущего префикса команд из файла
-    Возвращает DEFAULT_PREFIX если:
-    - файл не существует
-    - префикс не является одним символом
-    """
-    try:
-        if not os.path.exists(PREFIX_FILE):
-            logger.debug(f"Файл префикса не найден, используется префикс по умолчанию: {DEFAULT_PREFIX}")
-            return DEFAULT_PREFIX
-            
+    """Получение текущего префикса команд"""
+    if os.path.exists(PREFIX_FILE):
         with open(PREFIX_FILE, 'r') as f:
             prefix = f.read().strip()
-            
-        if len(prefix) != 1:
-            logger.warning(f"Некорректная длина префикса '{prefix}'. Должен быть 1 символ. Используется префикс по умолчанию")
-            return DEFAULT_PREFIX
-            
-        logger.info(f"Успешно загружен префикс команд: '{prefix}'")
-        return prefix
-        
-    except Exception as e:
-        logger.error(f"Ошибка при чтении префикса: {str(e)}. Используется префикс по умолчанию")
-        return DEFAULT_PREFIX
+            return prefix if len(prefix) == 1 else DEFAULT_PREFIX
+    return DEFAULT_PREFIX
 
 async def restart_bot(event=None):
     """Функция для перезапуска бота"""
@@ -351,7 +319,6 @@ async def update_handler(event):
         await restart_bot()
     except Exception as e:
         await event.edit(f"❌ Ошибка при обновлении: {str(e)}")
-
 async def handle_setprefix(event):
     if not await is_owner(event):
         return
@@ -366,17 +333,21 @@ async def handle_setprefix(event):
         await event.edit("❌ Префикс должен быть одним символом!")
         return
     
+    # Экранируем специальные символы регулярных выражений
+    if new_prefix in r'\.^$*+?{}[]|()':
+        new_prefix = '\\' + new_prefix
+    
     try:
         os.makedirs('source', exist_ok=True)
         with open(PREFIX_FILE, 'w') as f:
-            f.write(new_prefix)
+            f.write(new_prefix.replace('\\', ''))  # Сохраняем без экранирования
         
-        await event.edit(f"✅ Префикс изменён на '{new_prefix}'! Перезагрузка...")
+        await event.edit(f"✅ Префикс изменён на '{new_prefix.replace('\\', '')}'! Перезагрузка...")
         await asyncio.sleep(2)
         await restart_bot()
     except Exception as e:
         await event.edit(f"❌ Ошибка при изменении префикса: {str(e)}")
-
+    
 async def handle_restart(event):
     if not await is_owner(event):
         return
