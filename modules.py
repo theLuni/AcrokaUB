@@ -47,7 +47,16 @@ def get_module_info(module_name):
         return f"{name} ({commands})"
     except Exception:
         return f"{module_name} (Неизвестно)"
-
+        
+def get_loaded_modules():
+    modules = []
+    if os.path.exists(MODS_DIRECTORY):
+        for filename in os.listdir(MODS_DIRECTORY):
+            if filename.endswith(".py"):
+                module_name = filename[:-3]  # Убираем ".py"
+                modules.append(module_name)
+    return modules
+    
 async def handle_help(event):
     global received_messages_count, active_users
     received_messages_count += 1
