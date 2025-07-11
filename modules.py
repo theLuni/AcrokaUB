@@ -264,20 +264,12 @@ async def run_bot(token):
     print("🚀 Запуск бота...")
     
     try:
-        # Загрузка дополнительных ресурсов
         await download_gif()
         await load_all_modules()
 
-        # Инициализация клиента бота
         bot_client = TelegramClient('acroka_bot', API_ID, API_HASH)
-        
-        # Проверка соединения
         await bot_client.start(bot_token=token)
-        if not await bot_client.is_connected():
-            print("❌ Не удалось подключиться к серверам Telegram")
-            return
 
-        # Обработчик команды /start
         @bot_client.on(events.NewMessage(pattern='/start'))
         async def start_handler(event):
             try:
@@ -285,30 +277,23 @@ async def run_bot(token):
                     await bot_client.send_file(
                         event.chat_id,
                         GIF_FILENAME,
-                        caption=(
-                            '👋 Привет! Я - Acroka UserBot!\n'
-                            '📌 Используй .help для списка команд\n'
-                            '💬 Поддержка: @acroka_support'
-                        ),
+                        caption='👋 Привет! Я - Acroka UserBot!\n📌 Используй .help для списка команд',
                         parse_mode='markdown'
                     )
                 else:
-                    await event.respond(
-                        '👋 Привет! Я - Acroka UserBot!\n'
-                        '📌 Используй .help для списка команд\n'
-                        '💬 Поддержка: @acroka_support'
-                    )
+                    await event.respond('👋 Привет! Я - Acroka UserBot!')
             except Exception as e:
                 print(f"⚠️ Ошибка при обработке /start: {e}")
 
-        print("✅ Бот успешно запущен!")
+        print("✅ Бот запущен!")
         await bot_client.run_until_disconnected()
 
     except Exception as e:
         print(f"🛑 Критическая ошибка при запуске бота: {e}")
     finally:
-        if 'bot_client' in locals() and await bot_client.is_connected():
-            await bot_client.disconnect()
+        if 'bot_client' in locals() and bot_client.is_connected():
+            await bot_client.disconnected()
+            
 def register_event_handlers(client):
     deferred = DeferredMessage(client)
 
