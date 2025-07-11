@@ -325,13 +325,15 @@ async def main():
     if os.path.exists(TOKEN_FILE):
         with open(TOKEN_FILE) as f:
             data = f.read().strip().split(':')
-            if len(data) > 2:  # Проверка, что в файле достаточно данных
-                token = data[2]
+            
+            # Проверка на наличие двух строк
+            if len(data) >= 2:  # Достаточно данных для API ID и API Hash
+                token = data[1]  # Предполагаем, что токен на второй позиции (индекс 1)
                 await run_bot(token)
             else:
                 print("❌ Ошибка: недостаточно данных в файле с токеном.")
     else:
-        print("❌ Файл с токеном бота не найден")
+        print("❌ Файл с токеном бота не найден.")
         
 if __name__ == '__main__':
     asyncio.run(main())
