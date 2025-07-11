@@ -368,8 +368,9 @@ async def download_gif():
         except Exception as e:
             print(f"Ошибка загрузки GIF: {e}")
 
-def register_event_handlers(client):
-    prefix = get_prefix()
+def register_event_handlers(client, prefix=None):
+    if prefix is None:       
+        prefix = get_prefix()
     deferred = DeferredMessage(client)
     
     handlers = [
