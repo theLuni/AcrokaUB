@@ -163,9 +163,13 @@ async def main():
                 username, user_id, token = result
         else:
             with open(BOT_TOKEN_FILE, 'r') as f:
-                data = f.read().strip().split(':')
-                if len(data) == 3:
-                    username, user_id, token = data
+                content = f.read().strip()
+                # Более гибкое разделение данных
+                if content.count(':') >= 2:
+                    parts = content.split(':')
+                    username = parts[0]
+                    user_id = parts[1]
+                    token = ':'.join(parts[2:])  # Объединяем оставшиеся части как токен
                 else:
                     print("❌ Неверный формат файла токена")
                     return
@@ -185,6 +189,7 @@ async def main():
     finally:
         if client.is_connected():
             await client.disconnect()
+            
 
 if __name__ == '__main__':
     asyncio.run(main())
