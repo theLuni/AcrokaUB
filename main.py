@@ -10,7 +10,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN_FILE = os.path.join(BASE_DIR, 'source', 'bottoken.txt')
 BOT_IMAGE = os.path.join(BASE_DIR, 'source', 'pic.png')
 
-client = TelegramClient('acroka_user_session', API_ID, API_HASH)
+client = TelegramClient('acroka_user_session_{API_ID}', API_ID, API_HASH)
 
 async def sleep(delay=1):
     """Задержка между сообщениями"""
