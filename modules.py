@@ -25,7 +25,7 @@ active_users = set()
 MODS_DIRECTORY = 'source/mods/'
 loaded_modules = []
 
-client = TelegramClient('acroka_session', API_ID, API_HASH)
+client = TelegramClient('acroka_session_{API_ID}', API_ID, API_HASH)
 GIF_URL = "https://tenor.com/vzU4iQebtgZ.gif"
 GIF_FILENAME = "welcome.gif"
 
