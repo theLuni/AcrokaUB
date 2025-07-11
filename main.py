@@ -4,12 +4,17 @@ from telethon import TelegramClient
 from config import API_ID, API_HASH
 from modules import register_event_handlers, generate_username, run_bot
 import os
+import re
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN_FILE = os.path.join(BASE_DIR, 'source', 'bottoken.txt')
 BOT_IMAGE = os.path.join(BASE_DIR, 'source', 'pic.png')
 
 client = TelegramClient('acroka_user_session', API_ID, API_HASH)
+
+async def sleep(delay=1):
+    """Задержка между сообщениями"""
+    await asyncio.sleep(delay)
 
 async def create_new_bot():
     """Создание нового бота через BotFather"""
@@ -18,38 +23,62 @@ async def create_new_bot():
         async with client.conversation('BotFather') as conv:
             # Шаг 1: Инициируем создание бота
             await conv.send_message('/newbot')
+            await sleep()
             response = await conv.get_response()
             
             if "Alright" not in response.text:
                 print("❌ Не удалось начать создание бота")
+                print(f"Ответ BotFather: {response.text}")
                 return None, None, None
 
             # Шаг 2: Отправляем имя бота
             await conv.send_message('Acroka Helper Bot')
+            await sleep()
             await conv.get_response()
 
             # Шаг 3: Отправляем юзернейм
             username = generate_username()
             await conv.send_message(username)
+            await sleep()
             response = await conv.get_response()
 
             if "Done!" not in response.text:
                 print("❌ Не удалось создать бота")
+                print(f"Ответ BotFather: {response.text}")
                 return None, None, None
 
-            # Извлекаем токен
+            # Извлекаем токен из ответа
             token = None
-            for line in response.text.split('\n'):
-                if line.startswith('Use this token'):
-                    token = line.split(':')[1].strip()
-                    break
+            # Вариант 1: Токен на отдельной строке после "Use this token"
+            if "Use this token" in response.text:
+                token_match = re.search(r'(\d+:[a-zA-Z0-9_-]+)', response.text)
+                if token_match:
+                    token = token_match.group(1)
+                else:
+                    # Если токен в следующем сообщении
+                    await sleep()
+                    token_msg = await conv.get_response()
+                    token_match = re.search(r'(\d+:[a-zA-Z0-9_-]+)', token_msg.text)
+                    if token_match:
+                        token = token_match.group(1)
+            
+            # Вариант 2: Просто ищем строку с форматом токена
+            if not token:
+                for line in response.text.split('\n'):
+                    if re.match(r'^\d+:[a-zA-Z0-9_-]+$', line.strip()):
+                        token = line.strip()
+                        break
 
             if not token:
                 print("❌ Не удалось извлечь токен")
+                print(f"Ответ BotFather: {response.text}")
                 return None, None, None
 
-            # Сохраняем данные бота
+            # Очищаем токен от лишних символов
+            token = re.sub(r'[`"\']', '', token).strip()
             user_id = token.split(':')[0]
+
+            # Сохраняем данные бота
             with open(BOT_TOKEN_FILE, 'w') as f:
                 f.write(f"{username}:{user_id}:{token}")
 
@@ -69,12 +98,15 @@ async def set_bot_photo(username):
         try:
             async with client.conversation('BotFather') as conv:
                 await conv.send_message('/setuserpic')
+                await sleep()
                 await conv.get_response()
                 
                 await conv.send_message(f'@{username}')
+                await sleep()
                 await conv.get_response()
                 
                 await conv.send_file(BOT_IMAGE)
+                await sleep()
                 await conv.get_response()
                 print("🖼️ Аватарка бота установлена!")
         except Exception as e:
@@ -89,18 +121,43 @@ async def load_existing_bot(username):
         async with client.conversation('BotFather') as conv:
             # Запрашиваем токен
             await conv.send_message('/token')
+            await sleep()
             await conv.get_response()
             
             # Указываем юзернейм бота
             await conv.send_message(f'@{username}')
+            await sleep()
             response = await conv.get_response()
 
-            if "You can use this token" not in response.text:
+            # Ищем токен в ответе
+            token = None
+            # Вариант 1: Токен на отдельной строке после "You can use this token"
+            if "You can use this token" in response.text:
+                token_match = re.search(r'(\d+:[a-zA-Z0-9_-]+)', response.text)
+                if token_match:
+                    token = token_match.group(1)
+                else:
+                    # Если токен в следующем сообщении
+                    await sleep()
+                    token_msg = await conv.get_response()
+                    token_match = re.search(r'(\d+:[a-zA-Z0-9_-]+)', token_msg.text)
+                    if token_match:
+                        token = token_match.group(1)
+            
+            # Вариант 2: Просто ищем строку с форматом токена
+            if not token:
+                for line in response.text.split('\n'):
+                    if re.match(r'^\d+:[a-zA-Z0-9_-]+$', line.strip()):
+                        token = line.strip()
+                        break
+
+            if not token:
                 print("❌ Не удалось получить токен")
+                print(f"Ответ BotFather: {response.text}")
                 return None, None
 
-            # Извлекаем токен
-            token = response.text.split('token:')[1].strip().split()[0].replace("`", "")
+            # Очищаем токен от лишних символов
+            token = re.sub(r'[`"\']', '', token).strip()
             user_id = token.split(':')[0]
 
             # Сохраняем токен
@@ -122,10 +179,10 @@ async def check_bot_token(token):
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(f'https://api.telegram.org/bot{token}/getMe') as resp:
-                if resp.status == 200:
-                    return True
-        return False
-    except Exception:
+                data = await resp.json()
+                return resp.status == 200 and data.get('ok', False)
+    except Exception as e:
+        print(f"⚠️ Ошибка проверки токена: {e}")
         return False
 
 async def main():
