@@ -12,6 +12,7 @@ import pyfiglet
 from langdetect import detect, DetectorFactory
 import re
 import importlib.util
+from config import API_ID, API_HASH
 
 # Инициализация
 DetectorFactory.seed = 0
