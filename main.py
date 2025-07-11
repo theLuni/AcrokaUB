@@ -9,12 +9,24 @@ import re
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BOT_TOKEN_FILE = os.path.join(BASE_DIR, 'source', 'bottoken.txt')
 BOT_IMAGE = os.path.join(BASE_DIR, 'source', 'pic.png')
+# Добавьте в начало файла
+PREFIX_FILE = os.path.join(BASE_DIR, 'source', 'prefix.txt')
+DEFAULT_PREFIX = '.'
+
 
 client = TelegramClient('acroka_user_session_{API_ID}', API_ID, API_HASH)
 
 async def sleep(delay=1):
     """Задержка между сообщениями"""
     await asyncio.sleep(delay)
+
+def get_prefix():
+    """Получение текущего префикса команд"""
+    if os.path.exists(PREFIX_FILE):
+        with open(PREFIX_FILE, 'r') as f:
+            prefix = f.read().strip()
+            return prefix if len(prefix) == 1 else DEFAULT_PREFIX
+    return DEFAULT_PREFIX
 
 async def create_new_bot():
     """Создание нового бота через BotFather"""
