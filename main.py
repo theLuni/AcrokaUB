@@ -324,10 +324,14 @@ async def main():
     
     if os.path.exists(TOKEN_FILE):
         with open(TOKEN_FILE) as f:
-            token = f.read().strip().split(':')[2]
-        await run_bot(token)
+            data = f.read().strip().split(':')
+            if len(data) > 2:  # Проверка, что в файле достаточно данных
+                token = data[2]
+                await run_bot(token)
+            else:
+                print("❌ Ошибка: недостаточно данных в файле с токеном.")
     else:
         print("❌ Файл с токеном бота не найден")
-
+        
 if __name__ == '__main__':
     asyncio.run(main())
