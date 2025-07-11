@@ -222,11 +222,11 @@ async def main():
                 print("❌ Недействительный токен бота")
                 return
 
-        # Регистрируем обработчики команд
+        # Регистрируем обработчики команд для основного клиента
         register_event_handlers(client)
         
-        # Запускаем бота
-        bot_task = asyncio.create_task(run_bot(client, token))
+        # Запускаем бота (только с токеном, как требует функция)
+        bot_task = asyncio.create_task(run_bot(token))
         
         # Отправляем тестовое сообщение
         await client.send_message(f'@{username}', '/start')
@@ -237,7 +237,8 @@ async def main():
     except Exception as e:
         print(f"🛑 Критическая ошибка: {e}")
     finally:
-        await client.disconnect()
-
+        if await client.is_connected():
+            await client.disconnect()
+            
 if __name__ == '__main__':
     asyncio.run(main())
