@@ -374,27 +374,30 @@ async def download_gif():
 def register_event_handlers(client, prefix=None):
     if prefix is None:
         prefix = get_prefix()
-        
+    
+    # Автоматическое экранирование спецсимволов в префиксе
+    escaped_prefix = re.escape(prefix)
+    
     deferred = DeferredMessage(client)
     
-
     handlers = [
-        (rf'^{prefix}help$', handle_help),
-        (rf'^{prefix}info$', handle_info),
-        (rf'^{prefix}ping$', handle_ping),
-        (rf'^{prefix}loadmod$', handle_loadmod),
-        (rf'^{prefix}unloadmod (\w+)', handle_unloadmod),
-        (rf'^{prefix}tr (\w{{2}})$', translate_handler),
-        (rf'^{prefix}calc (.+)', calc_handler),
-        (rf'^{prefix}deferral', deferred.handler),
-        (rf'^{prefix}update$', update_handler),
-        (rf'^{prefix}setprefix (.+)$', handle_setprefix)  # Новая команда
+        (rf'^{escaped_prefix}help$', handle_help),
+        (rf'^{escaped_prefix}info$', handle_info),
+        (rf'^{escaped_prefix}ping$', handle_ping),
+        (rf'^{escaped_prefix}loadmod$', handle_loadmod),
+        (rf'^{escaped_prefix}unloadmod (\w+)$', handle_unloadmod),
+        (rf'^{escaped_prefix}tr (\w{{2}})$', translate_handler),
+        (rf'^{escaped_prefix}calc (.+)$', calc_handler),
+        (rf'^{escaped_prefix}deferral (\d+) (\d+) (.+)$', deferred.handler),
+        (rf'^{escaped_prefix}update$', update_handler),
+        (rf'^{escaped_prefix}setprefix (.+)$', handle_setprefix),
+        (rf'^{escaped_prefix}restart$', handle_restart)
     ]
 
     for pattern, handler in handlers:
         client.add_event_handler(
             handler, 
-            events.NewMessage(pattern=pattern)
+            events.NewMessage(pattern=pattern, outgoing=True)
         )
 
 async def run_bot(token):
