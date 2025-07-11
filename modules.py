@@ -279,7 +279,7 @@ async def run_bot(token):
         bot_client = TelegramClient('acroka_bot', API_ID, API_HASH)
         await bot_client.start(bot_token=token)
 
-        @bot_client.on(events.NewMessage(pattern='/start'))
+        
         async def start_handler(event):
             try:
                 if os.path.exists(GIF_FILENAME):
@@ -295,6 +295,7 @@ async def run_bot(token):
                 print(f"⚠️ Ошибка при обработке /start: {e}")
 
         print("✅ Бот запущен!")
+        @bot_client.on(events.NewMessage(pattern='/start'))
         await bot_client.run_until_disconnected()
 
     except Exception as e:
