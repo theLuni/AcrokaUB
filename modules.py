@@ -393,7 +393,7 @@ def register_event_handlers(client, prefix=None):
             events.NewMessage(pattern=pattern)
         )
 
-async def run_bot():
+async def run_bot(token):
     print(pyfiglet.figlet_format("Acroka"))
     print("🚀 Запуск юзербота...")
     
