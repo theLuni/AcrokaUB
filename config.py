@@ -38,5 +38,24 @@ def get_api_credentials():
     
     return api_id, api_hash
 
+def get_bot_token():
+    """Получает токен бота из файла /source/bottoken.txt в формате 'hasaco_bot:7728200289:7728200289:AAG3NA0ZWgBPKkJjkGYCxZtCjCrX5fEJxj8'"""
+    token_file = os.path.join('source', 'bottoken.txt')
+    
+    if not os.path.exists(token_file):
+        raise FileNotFoundError(f"Файл с токеном не найден: {token_file}")
+    
+    with open(token_file, 'r') as f:
+        token_line = f.read().strip()
+    
+    # Разделяем строку по двоеточиям и берем часть после второго двоеточия
+    parts = token_line.split(':')
+    if len(parts) < 3:
+        raise ValueError("Неверный формат токена в файле")
+    
+    return ':'.join(parts[2:])  # Возвращаем все после второго двоеточия
+
+BOT_TOKEN = get_bot_token()
+
 # Вызов функции получения API ID и API Hash
 API_ID, API_HASH = get_api_credentials()
