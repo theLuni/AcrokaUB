@@ -66,13 +66,45 @@ def get_loaded_modules():
                 modules.append(module_name)
     return modules
 
+import logging
+from pathlib import Path
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('acroka_bot.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 def get_prefix():
-    """Получение текущего префикса команд"""
-    if os.path.exists(PREFIX_FILE):
+    """
+    Получение текущего префикса команд из файла
+    Возвращает DEFAULT_PREFIX если:
+    - файл не существует
+    - префикс не является одним символом
+    """
+    try:
+        if not os.path.exists(PREFIX_FILE):
+            logger.debug(f"Файл префикса не найден, используется префикс по умолчанию: {DEFAULT_PREFIX}")
+            return DEFAULT_PREFIX
+            
         with open(PREFIX_FILE, 'r') as f:
             prefix = f.read().strip()
-            return prefix if len(prefix) == 1 else DEFAULT_PREFIX
-    return DEFAULT_PREFIX
+            
+        if len(prefix) != 1:
+            logger.warning(f"Некорректная длина префикса '{prefix}'. Должен быть 1 символ. Используется префикс по умолчанию")
+            return DEFAULT_PREFIX
+            
+        logger.info(f"Успешно загружен префикс команд: '{prefix}'")
+        return prefix
+        
+    except Exception as e:
+        logger.error(f"Ошибка при чтении префикса: {str(e)}. Используется префикс по умолчанию")
+        return DEFAULT_PREFIX
 
 async def restart_bot(event=None):
     """Функция для перезапуска бота"""
