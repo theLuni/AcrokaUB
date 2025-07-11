@@ -369,22 +369,23 @@ async def download_gif():
             print(f"Ошибка загрузки GIF: {e}")
 
 def register_event_handlers(client, prefix=None):
-    if prefix is None:       
+    if prefix is None:
         prefix = get_prefix()
+        
     deferred = DeferredMessage(client)
     
+
     handlers = [
         (rf'^{prefix}help$', handle_help),
         (rf'^{prefix}info$', handle_info),
         (rf'^{prefix}ping$', handle_ping),
         (rf'^{prefix}loadmod$', handle_loadmod),
-        (rf'^{prefix}unloadmod (\w+)$', handle_unloadmod),
+        (rf'^{prefix}unloadmod (\w+)', handle_unloadmod),
         (rf'^{prefix}tr (\w{{2}})$', translate_handler),
-        (rf'^{prefix}calc (.+)$', calc_handler),
-        (rf'^{prefix}deferral (\d+) (\d+) (.+)$', deferred.handler),
+        (rf'^{prefix}calc (.+)', calc_handler),
+        (rf'^{prefix}deferral', deferred.handler),
         (rf'^{prefix}update$', update_handler),
-        (rf'^{prefix}setprefix (.+)$', handle_setprefix),
-        (rf'^{prefix}restart$', handle_restart)
+        (rf'^{prefix}setprefix (.+)$', handle_setprefix)  # Новая команда
     ]
 
     for pattern, handler in handlers:
