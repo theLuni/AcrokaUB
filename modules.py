@@ -276,11 +276,11 @@ async def run_bot(token):
         await download_gif()
         await load_all_modules()
 
-        bot_client = TelegramClient('acroka_bot', API_ID, API_HASH)
+        bot_client = TelegramClient(f'acroka_bot_{API_ID}', API_ID, API_HASH)
         await bot_client.start(bot_token=token)
 
-        
-        async def start_handler(event):
+        @bot_client.on(events.NewMessage(pattern='/start'))
+        async def start_handler_internal(event):
             try:
                 if os.path.exists(GIF_FILENAME):
                     await bot_client.send_file(
@@ -295,14 +295,13 @@ async def run_bot(token):
                 print(f"⚠️ Ошибка при обработке /start: {e}")
 
         print("✅ Бот запущен!")
-        @bot_client.on(events.NewMessage(pattern='/start'))
         await bot_client.run_until_disconnected()
 
     except Exception as e:
         print(f"🛑 Критическая ошибка при запуске бота: {e}")
     finally:
         if 'bot_client' in locals() and bot_client.is_connected():
-            await bot_client.disconnected()
+            await bot_client.disconnect()
             
 # Добавьте в начало файла
 PREFIX_FILE = os.path.join('source', 'prefix.txt')
