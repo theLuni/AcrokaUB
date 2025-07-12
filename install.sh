@@ -1,21 +1,26 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# Обновляем репозитории (если нужно — меняем зеркало)
-termux-change-repo <<< "1
-1
-Y
-"
+# Принудительно выбираем рабочее зеркало (Grimler или BFSU)
+echo -e "1\n2\nY\n" | termux-change-repo >/dev/null 2>&1 || {
+    echo "⚠ Не удалось сменить репозиторий! Попробуй вручную:"
+    echo "termux-change-repo"
+    exit 1
+}
 
-# Устанавливаем пакеты (с проверкой ошибок)
-pkg update -y && pkg install -y git python || {
-    echo "⚠ Ошибка установки пакетов! Попробуй вручную:"
+# Устанавливаем пакеты (с повтором при ошибке)
+for i in {1..3}; do
+    pkg update -y && pkg install -y git python && break
+    echo "⚠ Попытка $i/3 не удалась. Повторяем через 5 сек..."
+    sleep 5
+done || {
+    echo "❌ Ошибка установки пакетов! Попробуй вручную:"
     echo "pkg update -y && pkg install -y git python"
     exit 1
 }
 
 # Клонируем репозиторий
 git clone https://github.com/theLuni/AcrokaUB.git || {
-    echo "⚠ Ошибка клонирования! Проверь ссылку или интернет."
+    echo "❌ Ошибка клонирования! Проверь ссылку или интернет."
     exit 1
 }
 
@@ -27,7 +32,7 @@ if [ -f "dops.txt" ]; then
         exit 1
     }
 else
-    echo "⚠ Файл dops.txt не найден!"
+    echo "❌ Файл dops.txt не найден!"
     exit 1
 fi
 
@@ -41,6 +46,5 @@ EOF
 chmod +x ~/.termux/boot/run_acrokadb
 
 # Запускаем
-
 clear
 python3 main.py
