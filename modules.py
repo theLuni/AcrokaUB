@@ -407,21 +407,24 @@ async def run_bot(token):
     print(pyfiglet.figlet_format("Acroka"))
     print("🚀 Запуск бота...")
     
+    # Объявляем client как глобальную переменную модуля
+    global client
+    
     try:
         await download_gif()
 
-        # Создаем клиент и сохраняем в переменную bot_client
-        bot_client = TelegramClient(f'acroka_bot_{API_ID}', API_ID, API_HASH)
-        await bot_client.start(bot_token=token)
+        # Создаем и сохраняем клиент в глобальную переменную
+        client = TelegramClient(f'acroka_bot_{API_ID}', API_ID, API_HASH)
+        await client.start(bot_token=token)
         
-        # Правильно передаем bot_client в load_all_modules
-        await load_all_modules(bot_client)  # <-- Здесь передаем созданного клиента
+        # Загружаем модули, передавая клиента
+        await load_all_modules(client)
         
-        @bot_client.on(events.NewMessage(pattern='/start'))
+        @client.on(events.NewMessage(pattern='/start'))
         async def start_handler_internal(event):
             try:
                 if os.path.exists(GIF_FILENAME):
-                    await bot_client.send_file(
+                    await client.send_file(
                         event.chat_id,
                         GIF_FILENAME,
                         caption='👋 Привет! Я - Acroka UserBot!\n📌 Используй .help для списка команд',
@@ -432,15 +435,18 @@ async def run_bot(token):
             except Exception as e:
                 print(f"⚠️ Ошибка при обработке /start: {e}")
 
-        register_event_handlers(bot_client)
+        register_event_handlers(client)
         print("✅ Бот запущен!")
-        await bot_client.run_until_disconnected()
+        
+        # Бесконечный цикл для поддержания соединения
+        while True:
+            await asyncio.sleep(3600)  # Проверка каждые 60 минут
 
     except Exception as e:
         print(f"🛑 Критическая ошибка при запуске бота: {e}")
     finally:
-        if 'bot_client' in locals() and bot_client.is_connected():
-            await bot_client.disconnect()
+        if 'client' in globals() and client.is_connected():
+            await client.disconnect()
             
 
 def generate_username():
