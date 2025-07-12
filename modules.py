@@ -412,7 +412,7 @@ async def run_bot(token):
 
         bot_client = TelegramClient(f'acroka_bot_{API_ID}', API_ID, API_HASH)
         await bot_client.start(bot_token=token)
-        await load_all_modules(client)
+        await load_all_modules()
         @bot_client.on(events.NewMessage(pattern='/start'))
         async def start_handler_internal(event):
             try:
