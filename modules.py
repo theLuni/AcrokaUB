@@ -38,6 +38,14 @@ async def is_owner(event):
     me = await event.client.get_me()
     return event.sender_id == me.id
 
+async def load_all_modules(client):
+    for module_file in os.listdir(MODS_DIRECTORY):
+        if module_file.endswith('.py'):
+            module_name = os.path.splitext(module_file)[0]
+            module = await load_module(module_name)
+            if module and hasattr(module, 'on_load'):
+                await module.on_load(client)
+                
 def get_module_info(module_name):
     try:
         module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
@@ -65,6 +73,7 @@ def get_loaded_modules():
                 module_name = filename[:-3]
                 modules.append(module_name)
     return modules
+
 
 def get_prefix():
     """Получение текущего префикса команд"""
