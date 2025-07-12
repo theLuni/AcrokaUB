@@ -38,8 +38,19 @@ def get_api_credentials():
     
     return api_id, api_hash
 
+import os
+
 def get_bot_token():
-    """Получает токен бота из файла /source/bottoken.txt в формате 'hasaco_bot:7728200289:7728200289:AAG3NA0ZWgBPKkJjkGYCxZtCjCrX5fEJxj8'"""
+    """
+    Получает токен бота из файла /source/bottoken.txt в формате:
+    'hasaco_bot:7728200289:7728200289:AAG3NA0ZWgBPKkJjkGYCxZtCjCrX5fEJxj8'
+    
+    Возвращает:
+        str: Токен бота (часть после второго двоеточия) или None, если файл пустой/некорректный
+    
+    Исключения:
+        FileNotFoundError: Если файл не существует
+    """
     token_file = os.path.join('source', 'bottoken.txt')
     
     if not os.path.exists(token_file):
@@ -48,13 +59,29 @@ def get_bot_token():
     with open(token_file, 'r') as f:
         token_line = f.read().strip()
     
-    # Разделяем строку по двоеточиям и берем часть после второго двоеточия
-    parts = token_line.split(':')
-    if len(parts) < 3:
-        raise ValueError("Неверный формат токена в файле")
-    
-    return ':'.join(parts[2:])  # Возвращаем все после второго двоеточия
-
+    # Если файл пустой - возвращаем None
+    if not token_line:
+        return None
+        
+    try:
+        # Разделяем строку по двоеточиям
+        parts = token_line.split(':')
+        
+        # Проверяем минимальную длину и наличие токена
+        if len(parts) < 4:
+            return None
+            
+        # Проверяем, что последняя часть похожа на токен (длина и начало)
+        token_part = parts[3]
+        if len(token_part) < 30 or not token_part.startswith('AAG'):
+            return None
+            
+        return ':'.join(parts[2:])  # Возвращаем все после второго двоеточия
+        
+    except Exception as e:
+        # Ловим любые ошибки парсинга и возвращаем None
+        return None
+        
 BOT_TOKEN = get_bot_token()
 
 # Вызов функции получения API ID и API Hash
