@@ -1,5 +1,11 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
+# Проверка соединения с интернетом
+if ! ping -c 1 google.com >/dev/null 2>&1; then
+    echo "❌ Проблема с интернетом! Пожалуйста, проверьте соединение."
+    exit 1
+fi
+
 # Принудительно выбираем рабочее зеркало (Grimler или BFSU)
 echo -e "1\n2\nY\n" | termux-change-repo >/dev/null 2>&1 || {
     echo "⚠ Не удалось сменить репозиторий! Попробуй вручную:"
@@ -13,14 +19,14 @@ for i in {1..3}; do
     echo "⚠ Попытка $i/3 не удалась. Повторяем через 5 сек..."
     sleep 5
 done || {
-    echo "❌ Ошибка установки пакетов! Попробуй вручную:"
+    echo "❌ Ошибка установки пакетов! Попробуйте вручную:"
     echo "pkg update -y && pkg install -y git python"
     exit 1
 }
 
 # Клонируем репозиторий
 git clone https://github.com/theLuni/AcrokaUB.git || {
-    echo "❌ Ошибка клонирования! Проверь ссылку или интернет."
+    echo "❌ Ошибка клонирования! Проверьте ссылку или интернет."
     exit 1
 }
 
