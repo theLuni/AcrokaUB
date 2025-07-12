@@ -414,7 +414,7 @@ async def run_bot(token):
         await bot_client.start(bot_token=token)
         
         # Передаем bot_client как аргумент
-        await load_all_modules(bot_client)  # <-- Ключевое исправление
+        await load_all_modules(client)  # <-- Ключевое исправление
         
         @bot_client.on(events.NewMessage(pattern='/start'))
         async def start_handler_internal(event):
