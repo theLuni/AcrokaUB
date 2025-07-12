@@ -410,11 +410,12 @@ async def run_bot(token):
     try:
         await download_gif()
 
+        # Создаем клиент и сохраняем в переменную bot_client
         bot_client = TelegramClient(f'acroka_bot_{API_ID}', API_ID, API_HASH)
         await bot_client.start(bot_token=token)
         
-        # Передаем bot_client как аргумент
-        await load_all_modules(client)  # <-- Ключевое исправление
+        # Правильно передаем bot_client в load_all_modules
+        await load_all_modules(bot_client)  # <-- Здесь передаем созданного клиента
         
         @bot_client.on(events.NewMessage(pattern='/start'))
         async def start_handler_internal(event):
@@ -440,6 +441,7 @@ async def run_bot(token):
     finally:
         if 'bot_client' in locals() and bot_client.is_connected():
             await bot_client.disconnect()
+            
 
 def generate_username():
     random_part = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
