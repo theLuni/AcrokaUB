@@ -5,14 +5,6 @@ if ! ping -c 1 google.com >/dev/null 2>&1; then
     echo "❌ Проблема с интернетом! Пожалуйста, проверьте соединение."
     exit 1
 fi
-
-# Принудительно выбираем рабочее зеркало (Grimler или BFSU)
-echo -e "1\n2\nY\n" | termux-change-repo >/dev/null 2>&1 || {
-    echo "⚠ Не удалось сменить репозиторий! Попробуй вручную:"
-    echo "termux-change-repo"
-    exit 1
-}
-
 # Устанавливаем пакеты (с повтором при ошибке)
 for i in {1..3}; do
     pkg update -y && pkg install -y git python && break
