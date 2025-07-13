@@ -18,7 +18,8 @@ from googletrans import Translator, LANGUAGES
 import html
 import asyncio
 from functools import partial
-
+import glob
+import shutil
 # Инициализация
 DetectorFactory.seed = 0
 start_time = datetime.now()
@@ -100,6 +101,13 @@ async def restart_bot(event=None):
     
     print("🔄 Перезапуск системы...")
     try:
+        # Очищаем кэш Python перед перезагрузкой
+        cache_dir = os.path.join('source', 'mods', '__pycache__')
+        if os.path.exists(cache_dir):
+            import shutil
+            shutil.rmtree(cache_dir)
+            print(f"🧹 Очищен кэш: {cache_dir}")
+        
         # Сохраняем список загруженных модулей
         with open('.loaded_mods', 'w') as f:
             f.write('\n'.join(loaded_modules))
@@ -107,7 +115,8 @@ async def restart_bot(event=None):
         os.execv(sys.executable, RESTART_CMD)
     except Exception as e:
         print(f"❌ Ошибка при перезапуске: {str(e)}")
-        
+
+
 async def handle_help(event):
     if not await is_owner(event):
         return
@@ -193,9 +202,17 @@ async def handle_ping(event):
 async def load_module(module_name, client):
     """Загрузка и инициализация модуля с улучшенной обработкой"""
     try:
+        # Очищаем кэш перед загрузкой модуля
+        cache_file = os.path.join('source', 'mods', '__pycache__', f"{module_name}.*.pyc")
+        for f in glob.glob(cache_file):
+            try:
+                os.remove(f)
+                print(f"🧹 Удален кэш: {f}")
+            except:
+                pass
+                
         module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
-        print(f"🔹 Загрузка модуля: {module_name}")
-        
+        print(f"🔹 Загрузка модуля: {module_name}")        
         # Удаляем старую версию модуля если он уже загружен
         if module_name in sys.modules:
             del sys.modules[module_name]
@@ -556,8 +573,13 @@ def register_event_handlers(client, prefix=None):
         
 async def run_bot(token):
     """Основная функция с восстановлением модулей"""
-    print("🚀 Инициализация бота...")
+    # Очистка кэша при старте
+    cache_dir = os.path.join('source', 'mods', '__pycache__')
+    if os.path.exists(cache_dir):
+        shutil.rmtree(cache_dir)
+        print(f"🧹 Очищен кэш при старте: {cache_dir}")
     
+    print("🚀 Инициализация бота...")    
     try:
         # Восстановление загруженных модулей
         if os.path.exists('.loaded_mods'):
