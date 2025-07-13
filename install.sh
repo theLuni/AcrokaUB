@@ -112,4 +112,4 @@ finish_installation() {
     echo -e "  1. Закройте и снова откройте Termux"
     echo -e "  2. Или вручную: ${NC}cd ~/AcrokaUB && python3 main.py"
     echo -e "${BLUE}"
-    echo -e "  Для остановки: ${NC}pkill
+    echo -e "  Для остановки: ${NC}pkill"
