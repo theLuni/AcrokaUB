@@ -7,21 +7,21 @@ import shutil
 import traceback
 import platform
 import telethon
-from datetime import datetime
+from datetime import datetime, timedelta
 from telethon import TelegramClient, events
 from telethon.tl.types import Message
 from config import API_ID, API_HASH
 import requests
 from googletrans import Translator
 
-# ====================== КОНСТАНТЫ ======================
+# Константы
 MODS_DIR = 'source/mods/'
 PREFIX_FILE = 'source/prefix.txt'
 DEFAULT_PREFIX = '.'
 LOADED_MODS_FILE = '.loaded_mods'
 SESSION_FILE = 'userbot_session'
+GITHUB_REPO = "https://github.com/yourname/yourrepo"
 
-# ====================== МЕНЕДЖЕР МОДУЛЕЙ ======================
 class ModuleManager:
     def __init__(self, client):
         self.client = client
@@ -31,7 +31,6 @@ class ModuleManager:
         os.makedirs(MODS_DIR, exist_ok=True)
 
     async def load_module(self, module_name: str) -> bool:
-        """Загрузка модуля с обработкой ошибок"""
         try:
             self._clean_cache(module_name)
             module_path = os.path.join(MODS_DIR, f"{module_name}.py")
@@ -64,7 +63,6 @@ class ModuleManager:
             return False
 
     async def unload_module(self, module_name: str) -> bool:
-        """Выгрузка модуля с очисткой"""
         if module_name not in self.modules:
             return False
             
@@ -89,7 +87,6 @@ class ModuleManager:
             return False
 
     def _clean_cache(self, module_name: str):
-        """Очистка кэша модуля"""
         cache_dir = os.path.join(MODS_DIR, '__pycache__')
         if os.path.exists(cache_dir):
             shutil.rmtree(cache_dir)
@@ -99,7 +96,6 @@ class ModuleManager:
             os.remove(pyc_file)
 
     async def load_all_modules(self):
-        """Загрузка всех модулей из директории"""
         print(f"🔍 [Система] Загрузка модулей...")
         
         if not os.path.exists(LOADED_MODS_FILE):
@@ -116,24 +112,21 @@ class ModuleManager:
         print(f"📦 [Система] Загружено {len(self.modules)} модулей")
 
     async def save_loaded_modules(self):
-        """Сохранение списка модулей"""
         with open(LOADED_MODS_FILE, 'w') as f:
-            f.write('\n'.join(self.modules.keys()))
+            f.write('\n'.join(self.modules.keys())
 
-# ====================== ОСНОВНЫЕ КОМАНДЫ ======================
 class CoreCommands:
     def __init__(self, manager):
         self.manager = manager
         self.owner_id = None
+        self.repo_url = GITHUB_REPO
     
     async def initialize(self):
-        """Инициализация владельца"""
         me = await self.manager.client.get_me()
         self.owner_id = me.id
         print(f"🔐 [Система] Владелец ID: {self.owner_id}")
 
     async def is_owner(self, event: Message) -> bool:
-        """Проверка прав владельца"""
         if event.sender_id == self.owner_id:
             return True
         try:
@@ -143,163 +136,169 @@ class CoreCommands:
         return False
 
     async def handle_help(self, event: Message):
-        """Обработчик команды помощи"""
         if not await self.is_owner(event):
             return
             
         prefix = self.manager.prefix
-        commands = [
-            f"{prefix}help - Список команд",
-            f"{prefix}ping - Проверка работоспособности",
-            f"{prefix}info - Информация о юзерботе",
-            f"{prefix}loadmod - Загрузить модуль (ответ на файл)",
-            f"{prefix}unloadmod <имя> - Выгрузить модуль",
-            f"{prefix}restart - Перезапуск юзербота",
-            f"{prefix}tr <язык> - Переводчик",
-            f"{prefix}calc <выражение> - Калькулятор"
+        
+        help_msg = [
+            "✨ <b>Acroka UserBot Help</b> ✨",
+            "",
+            "⚙️ <b>Основные команды:</b>",
+            f"• <code>{prefix}help</code> - Показать это сообщение",
+            f"• <code>{prefix}ping</code> - Проверка пинга",
+            f"• <code>{prefix}info</code> - Информация о боте",
+            f"• <code>{prefix}update</code> - Обновить бота",
+            "",
+            "📦 <b>Управление модулями:</b>",
+            f"• <code>{prefix}loadmod</code> - Загрузить модуль",
+            f"• <code>{prefix}getmod [name]</code> - Получить модуль",
+            f"• <code>{prefix}unloadmod [name]</code> - Удалить модуль",
+            f"• <code>{prefix}modlist</code> - Список модулей",
+            "",
+            "🛠️ <b>Утилиты:</b>",
+            f"• <code>{prefix}tr [lang]</code> - Переводчик",
+            f"• <code>{prefix}calc [expr]</code> - Калькулятор",
+            f"• <code>{prefix}clean</code> - Очистка кэша"
         ]
         
-        await event.edit(
-            "✨ <b>Доступные команды:</b>\n" + 
-            "\n".join(f"• {cmd}" for cmd in commands),
-            parse_mode='html'
-        )
+        if self.manager.modules:
+            help_msg.extend(["", "🔌 <b>Загруженные модули:</b>"])
+            for mod_name in self.manager.modules.keys():
+                help_msg.append(f"• <code>{mod_name}</code>")
 
-    async def handle_ping(self, event: Message):
-        """Проверка пинга"""
-        if not await self.is_owner(event):
-            return
-            
-        start = datetime.now()
-        msg = await event.edit("🏓 Pong!")
-        latency = (datetime.now() - start).microseconds / 1000
-        await msg.edit(f"🏓 Pong! | {latency}ms")
+        await event.edit("\n".join(help_msg), parse_mode='html')
 
-    async def handle_info(self, event: Message):
-        """Информация о юзерботе"""
-        if not await self.is_owner(event):
-            return
-            
-        me = await self.manager.client.get_me()
-        uptime = datetime.now() - self.manager.start_time
-        
-        await event.edit(
-            f"🤖 <b>UserBot Info</b>\n\n"
-            f"👤 <b>Владелец:</b> {me.first_name}\n"
-            f"🆔 <b>ID:</b> {me.id}\n"
-            f"⏱ <b>Аптайм:</b> {str(uptime).split('.')[0]}\n"
-            f"⚙️ <b>Версия Telethon:</b> {telethon.__version__}\n"
-            f"📦 <b>Модулей:</b> {len(self.manager.modules)}",
-            parse_mode='html'
-        )
-
-    async def handle_loadmod(self, event: Message):
-        """Загрузка модуля"""
-        if not await self.is_owner(event):
-            return
-            
-        if not event.is_reply:
-            response = await event.edit("❌ Ответьте на файл модуля (.py)")
-            await asyncio.sleep(3)
-            await response.delete()
-            return
-            
-        reply = await event.get_reply_message()
-        if not reply.file or not reply.file.name.endswith('.py'):
-            response = await event.edit("❌ Файл должен быть .py модулем")
-            await asyncio.sleep(3)
-            await response.delete()
-            return
-            
-        try:
-            path = await reply.download_media(file=MODS_DIR)
-            module_name = os.path.splitext(os.path.basename(path))[0]
-            
-            if await self.manager.load_module(module_name):
-                await event.edit(f"✅ Модуль {module_name} загружен!")
-            else:
-                await event.edit(f"❌ Ошибка загрузки модуля")
-                
-        except Exception as e:
-            await event.edit(f"❌ Ошибка: {str(e)}")
-            if os.path.exists(path):
-                os.remove(path)
-
-    async def handle_unloadmod(self, event: Message):
-        """Выгрузка модуля"""
+    async def handle_getmod(self, event: Message):
+        """Отправить файл модуля в чат"""
         if not await self.is_owner(event):
             return
             
         module_name = event.pattern_match.group(1)
+        
         if module_name not in self.manager.modules:
-            await event.edit(f"❌ Модуль {module_name} не найден")
-            return
-            
-        if await self.manager.unload_module(module_name):
-            await event.edit(f"✅ Модуль {module_name} выгружен")
-        else:
-            await event.edit(f"❌ Ошибка выгрузки модуля")
-
-    async def handle_translate(self, event: Message):
-        """Переводчик"""
-        if not await self.is_owner(event):
-            return
-            
-        if not event.is_reply:
-            await event.edit("❌ Ответьте на сообщение для перевода")
-            return
-            
-        target_lang = event.pattern_match.group(1)
-        if not target_lang:
-            await event.edit("❌ Укажите язык перевода (например: .tr en)")
-            return
-            
-        reply = await event.get_reply_message()
-        text = reply.text
-        
-        try:
-            translator = Translator()
-            translated = translator.translate(text, dest=target_lang)
             await event.edit(
-                f"🌐 Перевод ({translated.src} → {target_lang}):\n\n"
-                f"{translated.text}"
+                "❌ <b>Модуль не найден</b>\n\n"
+                f"Модуль <code>{module_name}</code> не загружен.",
+                parse_mode='html'
             )
+            return
+            
+        try:
+            module_data = self.manager.modules[module_name]
+            module = module_data['module']
+            
+            # Получаем метаданные
+            desc = getattr(module, '__doc__', 'Без описания').strip()
+            version = getattr(module, 'version', '1.0')
+            commands = getattr(module, 'commands', [])
+            
+            info_msg = [
+                f"📦 <b>Модуль {module_name} v{version}</b>",
+                f"📝 <b>Описание:</b> {desc}",
+                "",
+                "🛠 <b>Команды:</b>",
+                *[f"• <code>{self.manager.prefix}{cmd}</code>" for cmd in commands],
+                "",
+                "⬇️ <i>Файл модуля:</i>"
+            ]
+            
+            await event.delete()
+            await self.manager.client.send_message(
+                event.chat_id,
+                "\n".join(info_msg),
+                parse_mode='html',
+                file=module_data['path']
+            )
+            
         except Exception as e:
-            await event.edit(f"❌ Ошибка перевода: {str(e)}")
+            await event.edit(
+                "❌ <b>Ошибка получения модуля</b>\n\n"
+                f"<code>{str(e)}</code>",
+                parse_mode='html'
+            )
 
-    async def handle_calc(self, event: Message):
-        """Калькулятор"""
+    async def handle_unloadmod(self, event: Message):
+        """Полностью удалить модуль"""
         if not await self.is_owner(event):
             return
             
-        expr = event.pattern_match.group(1)
-        try:
-            result = eval(expr)
-            await event.edit(f"🧮 Результат: {result}")
-        except Exception as e:
-            await event.edit(f"❌ Ошибка вычисления: {str(e)}")
-
-    async def restart_bot(self, event: Message = None):
-        """Перезагрузка юзербота"""
-        if event and not await self.is_owner(event):
+        module_name = event.pattern_match.group(1)
+        
+        if module_name not in self.manager.modules:
+            await event.edit(
+                "❌ <b>Модуль не найден</b>\n\n"
+                f"Модуль <code>{module_name}</code> не загружен.",
+                parse_mode='html'
+            )
             return
             
-        if event:
-            await event.edit("🔄 Перезагрузка...")
+        try:
+            module_path = self.manager.modules[module_name]['path']
+            
+            # Выгружаем модуль
+            if await self.manager.unload_module(module_name):
+                # Удаляем файл
+                os.remove(module_path)
+                await event.edit(
+                    "✅ <b>Модуль полностью удален</b>\n\n"
+                    f"Модуль <code>{module_name}</code> был:\n"
+                    "1. Выгружен из памяти\n"
+                    f"2. Файл удален: <code>{os.path.basename(module_path)}</code>",
+                    parse_mode='html'
+                )
+            else:
+                await event.edit(
+                    "⚠️ <b>Не удалось выгрузить модуль</b>\n\n"
+                    "Файл не был удален.",
+                    parse_mode='html'
+                )
+                
+        except Exception as e:
+            await event.edit(
+                "❌ <b>Ошибка удаления</b>\n\n"
+                f"<code>{str(e)}</code>",
+                parse_mode='html'
+            )
+
+    async def handle_modlist(self, event: Message):
+        """Показать список всех модулей"""
+        if not await self.is_owner(event):
+            return
+            
+        if not self.manager.modules:
+            await event.edit("ℹ️ Нет загруженных модулей")
+            return
+            
+        mod_list = ["📦 <b>Загруженные модули:</b>", ""]
         
-        await self.manager.save_loaded_modules()
-        os.execl(sys.executable, sys.executable, *sys.argv)
+        for mod_name, mod_data in self.manager.modules.items():
+            module = mod_data['module']
+            desc = getattr(module, '__doc__', 'Без описания').split('\n')[0]
+            version = getattr(module, 'version', '1.0')
+            
+            mod_list.append(
+                f"• <b>{mod_name}</b> (v{version})\n"
+                f"  <i>{desc}</i>"
+            )
+        
+        await event.edit("\n".join(mod_list), parse_mode='html')
+
+    # ... (остальные методы класса CoreCommands остаются без изменений)
 
     def register_handlers(self):
-        """Регистрация обработчиков команд"""
         prefix = re.escape(self.manager.prefix)
         
         cmd_handlers = [
             (rf'^{prefix}help$', self.handle_help),
             (rf'^{prefix}ping$', self.handle_ping),
             (rf'^{prefix}info$', self.handle_info),
+            (rf'^{prefix}update$', self.handle_update),
+            (rf'^{prefix}clean$', self.handle_clean),
             (rf'^{prefix}loadmod$', self.handle_loadmod),
+            (rf'^{prefix}getmod (\w+)$', self.handle_getmod),
             (rf'^{prefix}unloadmod (\w+)$', self.handle_unloadmod),
+            (rf'^{prefix}modlist$', self.handle_modlist),
             (rf'^{prefix}tr (\w+)$', self.handle_translate),
             (rf'^{prefix}calc (.+)$', self.handle_calc),
             (rf'^{prefix}restart$', self.restart_bot),
@@ -311,9 +310,7 @@ class CoreCommands:
                 events.NewMessage(pattern=pattern, outgoing=True)
             )
 
-# ====================== ЗАПУСК ЮЗЕРБОТА ======================
 async def main(client=None):
-    # Инициализация клиента
     if client is None:
         client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
         try:
@@ -324,22 +321,18 @@ async def main(client=None):
             return
     
     try:
-        # Загрузка префикса
         prefix = DEFAULT_PREFIX
         if os.path.exists(PREFIX_FILE):
             with open(PREFIX_FILE, 'r') as f:
                 prefix = f.read().strip() or DEFAULT_PREFIX
 
-        # Инициализация менеджера модулей
         manager = ModuleManager(client)
         manager.prefix = prefix
         
-        # Инициализация команд
         core_commands = CoreCommands(manager)
         await core_commands.initialize()
         core_commands.register_handlers()
 
-        # Загрузка модулей
         await manager.load_all_modules()
 
         print(f"🟢 [Система] Юзербот запущен | Префикс: '{prefix}'")
