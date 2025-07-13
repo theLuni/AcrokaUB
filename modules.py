@@ -20,7 +20,7 @@ PREFIX_FILE = 'source/prefix.txt'
 DEFAULT_PREFIX = '.'
 LOADED_MODS_FILE = '.loaded_mods'
 SESSION_FILE = 'userbot_session'
-GITHUB_REPO = "https://github.com/yourname/yourrepo"
+GITHUB_REPO = "https://github.com/theLuni/AcrokaUB"
 
 class ModuleManager:
     def __init__(self, client):
