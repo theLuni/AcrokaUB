@@ -134,6 +134,15 @@ class CoreCommands:
         except:
             pass
         return False
+    async def handle_ping(self, event: Message):
+        """Обработчик команды ping"""
+        if not await self.is_owner(event):
+            return
+            
+        start = datetime.now()
+        msg = await event.edit("🏓 Pong!")
+        latency = (datetime.now() - start).microseconds / 1000
+        await msg.edit(f"🏓 Pong! | {latency}ms")        
 
     async def handle_help(self, event: Message):
         if not await self.is_owner(event):
