@@ -113,7 +113,7 @@ class ModuleManager:
 
     async def save_loaded_modules(self):
         with open(LOADED_MODS_FILE, 'w') as f:
-            f.write('\n'.join(self.modules.keys())
+            f.write('\n'.join(self.modules.keys()))
 
 class CoreCommands:
     def __init__(self, manager):
