@@ -175,52 +175,67 @@ async def handle_ping(event):
     except Exception as e:
         await event.edit(f"❌ Ошибка: {str(e)}")
 
-async def load_module(module_name, client):
-    """Улучшенная загрузка модуля с проверкой"""
-    try:
-        if module_name in loaded_modules:
-            print(f"🔹 Модуль {module_name} уже загружен")
-            return None
-            
-        module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
-        print(f"🔹 Загрузка модуля: {module_name}")
-        
-        spec = importlib.util.spec_from_file_location(module_name, module_path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
-        
-        if hasattr(module, 'on_load'):
-            print(f"🔹 Инициализация {module_name}")
-            await module.on_load(client, get_prefix())
-        
-        loaded_modules.append(module_name)
-        return module
-
 async def handle_loadmod(event):
-    """Обработчик загрузки модуля с очисткой"""
-    if not await is_owner(event):
-        return
-    
-    if event.is_reply:
+    """Обработчик загрузки модуля с очисткой и полной обработкой ошибок"""
+    try:
+        # Проверка прав
+        if not await is_owner(event):
+            await event.delete()
+            return
+
+        # Проверка формата сообщения
+        if not event.is_reply:
+            await event.edit("❌ Ответьте на сообщение с файлом .py")
+            await asyncio.sleep(3)
+            await event.delete()
+            return
+
         reply = await event.get_reply_message()
-        if reply.media:
+        
+        # Проверка типа медиа
+        if not reply or not reply.media or not reply.file.ext == '.py':
+            await event.edit("❌ Файл должен быть с расширением .py")
+            await asyncio.sleep(3)
+            await event.delete()
+            return
+
+        # Скачивание файла
+        try:
             file = await reply.download_media(MODS_DIRECTORY)
             module_name = os.path.splitext(os.path.basename(file))[0]
             
-            # Очищаем старый модуль если был
+            # Перезагрузка модуля
             if module_name in loaded_modules:
-                loaded_modules.remove(module_name)
-                print(f"♻️ Перезагрузка модуля {module_name}")
+                try:
+                    # Выгрузка старой версии
+                    del sys.modules[module_name]
+                    loaded_modules.remove(module_name)
+                    print(f"♻️ Перезагрузка модуля {module_name}")
+                except Exception as unload_error:
+                    print(f"⚠️ Ошибка выгрузки модуля: {unload_error}")
+
+            # Загрузка нового модуля
+            result = await load_module(module_name, event.client)
             
-            if await load_module(module_name, event.client):
-                await event.edit(f"✅ Модуль '{module_name}' загружен!")
+            if result:
+                response = await event.edit(f"✅ Модуль '{module_name}' успешно загружен!")
+                await asyncio.sleep(3)
+                await response.delete()
             else:
-                await event.edit(f"❌ Ошибка загрузки '{module_name}'")
-            return
-    
-    await event.edit("❌ Ответьте на сообщение с файлом .py")
-    
+                response = await event.edit(f"❌ Не удалось загрузить модуль '{module_name}'")
+                await asyncio.sleep(3)
+                await response.delete()
+                
+        except Exception as download_error:
+            await event.edit(f"❌ Ошибка загрузки файла: {str(download_error)}")
+            await asyncio.sleep(3)
+            await event.delete()
+
+    except Exception as e:
+        print(f"💥 Критическая ошибка в handle_loadmod: {str(e)}")
+        await event.delete()
+
+
 async def handle_unloadmod(event):
     if not await is_owner(event):
         return
