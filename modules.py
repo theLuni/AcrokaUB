@@ -95,26 +95,29 @@ def get_prefix():
     return DEFAULT_PREFIX
 
 async def restart_bot(event=None):
-    """Улучшенный перезапуск с сохранением состояния"""
+    """Улучшенная перезагрузка"""
     if event:
-        await event.edit("🔄 Перезагрузка юзербота...")
+        await event.edit("🔄 Полная перезагрузка системы...")
     
-    print("🔄 Перезапуск системы...")
+    print("🔄 Запуск глубокой перезагрузки...")
     try:
-        # Очищаем кэш Python перед перезагрузкой
+        # Полная очистка состояния
+        for module in loaded_modules[:]:
+            try:
+                if module in sys.modules:
+                    del sys.modules[module]
+            except:
+                pass
+        
+        # Очистка кэша
         cache_dir = os.path.join('source', 'mods', '__pycache__')
         if os.path.exists(cache_dir):
-            import shutil
             shutil.rmtree(cache_dir)
-            print(f"🧹 Очищен кэш: {cache_dir}")
         
-        # Сохраняем список загруженных модулей
-        with open('.loaded_mods', 'w') as f:
-            f.write('\n'.join(loaded_modules))
-        
+        # Перезапуск
         os.execv(sys.executable, RESTART_CMD)
     except Exception as e:
-        print(f"❌ Ошибка при перезапуске: {str(e)}")
+        print(f"❌ Фатальная ошибка перезагрузки: {str(e)}"
 
 
 async def handle_help(event):
@@ -200,44 +203,45 @@ async def handle_ping(event):
         await event.edit(f"❌ Ошибка: {str(e)}")
 
 async def load_module(module_name, client):
-    """Загрузка и инициализация модуля с улучшенной обработкой"""
+    """Загрузка и инициализация модуля с полной перезагрузкой"""
     try:
-        # Очищаем кэш перед загрузкой модуля
-        cache_file = os.path.join('source', 'mods', '__pycache__', f"{module_name}.*.pyc")
-        for f in glob.glob(cache_file):
-            try:
-                os.remove(f)
-                print(f"🧹 Удален кэш: {f}")
-            except:
-                pass
-                
         module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
-        print(f"🔹 Загрузка модуля: {module_name}")        
-        # Удаляем старую версию модуля если он уже загружен
-        if module_name in sys.modules:
-            del sys.modules[module_name]
-        if module_name in loaded_modules:
-            loaded_modules.remove(module_name)
         
-        # Загружаем модуль
+        # Полная очистка кэша
+        cache_dir = os.path.join('source', 'mods', '__pycache__')
+        if os.path.exists(cache_dir):
+            import shutil
+            shutil.rmtree(cache_dir)
+            print(f"🧹 Полностью очищен кэш модулей")
+        
+        # Удаление из sys.modules с проверкой атрибутов
+        if module_name in sys.modules:
+            old_module = sys.modules[module_name]
+            if hasattr(old_module, 'event_handlers'):
+                for handler in old_module.event_handlers:
+                    client.remove_event_handler(handler)
+            del sys.modules[module_name]
+        
+        # Принудительная перезагрузка модуля
         spec = importlib.util.spec_from_file_location(module_name, module_path)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
         
-        # Инициализируем модуль
+        # Новая система регистрации обработчиков
         if hasattr(module, 'on_load'):
-            print(f"🔹 Инициализация {module_name}")
-            await module.on_load(client, get_prefix())
+            print(f"🔹 Инициализация {module_name} с новой системой обработчиков")
+            await module.on_load(client, get_prefix(), force_reload=True)
         
-        loaded_modules.append(module_name)
-        print(f"✅ Модуль {module_name} успешно загружен")
+        if module_name not in loaded_modules:
+            loaded_modules.append(module_name)
+            
+        print(f"✅ Модуль {module_name} полностью перезагружен")
         return module
         
     except Exception as e:
-        print(f"❌ Ошибка загрузки модуля {module_name}: {str(e)}")
+        print(f"❌ Критическая ошибка загрузки {module_name}: {str(e)}")
         return None
-        
 
 async def handle_loadmod(event):
     """Обработчик команды загрузки модуля"""
