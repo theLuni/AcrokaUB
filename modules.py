@@ -312,14 +312,18 @@ class CoreCommands:
             )
 
 # ====================== ЗАПУСК ЮЗЕРБОТА ======================
-async def main():
+async def main(client=None):
     # Инициализация клиента
-    client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
+    if client is None:
+        client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
+        try:
+            await client.start()
+            print("✅ [Система] Юзербот авторизован")
+        except Exception as e:
+            print(f"❌ [Ошибка авторизации] {str(e)}")
+            return
     
     try:
-        await client.start()
-        print("✅ [Система] Юзербот авторизован")
-
         # Загрузка префикса
         prefix = DEFAULT_PREFIX
         if os.path.exists(PREFIX_FILE):
@@ -347,7 +351,8 @@ async def main():
         print(f"❌ [Ошибка] {str(e)}")
         traceback.print_exc()
     finally:
-        await client.disconnect()
+        if client.is_connected():
+            await client.disconnect()
 
 if __name__ == '__main__':
     asyncio.run(main())
