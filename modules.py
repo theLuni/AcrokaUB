@@ -1,632 +1,334 @@
 import os
-import random
-import string
-import subprocess
-import asyncio
-import platform
 import sys
-from telethon import events, TelegramClient
-from datetime import datetime, timedelta
-import telethon
-import requests
-import pyfiglet
-from langdetect import detect, DetectorFactory
-import re
-import importlib.util
-from config import API_ID, API_HASH, BOT_TOKEN
-from googletrans import Translator, LANGUAGES
-import html
+import importlib
 import asyncio
-from functools import partial
-import glob
+import re
 import shutil
-# Инициализация
-DetectorFactory.seed = 0
-start_time = datetime.now()
+import traceback
+import platform
+import telethon
+from datetime import datetime
+from telethon import TelegramClient, events
+from config import API_ID, API_HASH, BOT_TOKEN
 
-# Глобальные переменные
-received_messages_count = 0
-sent_messages_count = 0
-active_users = set()
-MODS_DIRECTORY = 'source/mods/'
-loaded_modules = []
-
+# ====================== КОНСТАНТЫ ======================
+MODS_DIR = 'source/mods/'
+PREFIX_FILE = 'source/prefix.txt'
+DEFAULT_PREFIX = '.'
+LOADED_MODS_FILE = '.loaded_mods'
 GIF_URL = "https://tenor.com/vzU4iQebtgZ.gif"
 GIF_FILENAME = "welcome.gif"
-PREFIX_FILE = os.path.join('source', 'prefix.txt')
-DEFAULT_PREFIX = '.'
-RESTART_CMD = [sys.executable] + sys.argv
 
-async def is_owner(event):
-    """Проверяет, является ли отправитель владельцем сессии."""
-    me = await event.client.get_me()
-    return event.sender_id == me.id
-
-async def load_all_modules(client):
-    """Загрузка всех модулей с обработкой ошибок"""
-    if not os.path.exists(MODS_DIRECTORY):
-        os.makedirs(MODS_DIRECTORY, exist_ok=True)
-        return
-
-    print(f"🔍 Сканирование {MODS_DIRECTORY} на модули...")
-    for filename in os.listdir(MODS_DIRECTORY):
-        if filename.endswith('.py') and not filename.startswith('_'):
-            module_name = filename[:-3]
-            try:
-                await load_module(module_name, client)
-            except Exception as e:
-                print(f"❌ Не удалось загрузить модуль {module_name}: {str(e)}")
-            
-def get_module_info(module_name):
-    try:
-        module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
-        with open(module_path, 'r', encoding='utf-8') as f:
-            lines = [f.readline().strip() for _ in range(4)]
-
-        name = commands = "Неизвестно"
-        for line in lines:
-            if line.startswith("#"):
-                key, value = line[1:].split(":", 1)
-                if key.strip() == "name":
-                    name = value.strip()
-                elif key.strip() == "commands":
-                    commands = value.strip()
-
-        return f"{name} ({commands})"
-    except Exception:
-        return f"{module_name} (Неизвестно)"
-        
-def get_loaded_modules():
-    modules = []
-    if os.path.exists(MODS_DIRECTORY):
-        for filename in os.listdir(MODS_DIRECTORY):
-            if filename.endswith(".py"):
-                module_name = filename[:-3]
-                modules.append(module_name)
-    return modules
-
-
-def get_prefix():
-    """Получение текущего префикса команд"""
-    if os.path.exists(PREFIX_FILE):
-        with open(PREFIX_FILE, 'r') as f:
-            prefix = f.read().strip()
-            return prefix if len(prefix) == 1 else DEFAULT_PREFIX
-    return DEFAULT_PREFIX
-
-async def restart_bot(event=None):
-    """Улучшенная перезагрузка"""
-    if event:
-        await event.edit("🔄 Полная перезагрузка системы...")
-    
-    print("🔄 Запуск глубокой перезагрузки...")
-    try:
-        # Полная очистка состояния
-        for module in loaded_modules[:]:
-            try:
-                if module in sys.modules:
-                    del sys.modules[module]
-            except:
-                pass
-        
-        # Очистка кэша
-        cache_dir = os.path.join('source', 'mods', '__pycache__')
-        if os.path.exists(cache_dir):
-            shutil.rmtree(cache_dir)
-        
-        # Перезапуск
-        os.execv(sys.executable, RESTART_CMD)
-    except Exception as e:
-        print(f"❌ Фатальная ошибка перезагрузки: {str(e)}"
-
-
-async def handle_help(event):
-    if not await is_owner(event):
-        return
-    
-    global received_messages_count, active_users
-    received_messages_count += 1
-    active_users.add(event.sender_id)
-
-    modules_list = get_loaded_modules()
-    prefix = get_prefix()
-    base_commands = [
-        f"📜 {prefix}info - информация о юзерботе",
-        f"🏓 {prefix}ping - пинг системы",
-        f"❓ {prefix}help - посмотреть команды",
-        f"📦 {prefix}loadmod - загрузить модуль",
-        f"🔄 {prefix}unloadmod - удалить модуль",
-        f"⏳ {prefix}deferral - отложенные сообщения",
-        f"🧮 {prefix}calc - калькулятор",
-        f"💻 {prefix}tr - переводчик",
-        f"🔄 {prefix}update - обновить бота",
-        f"⚙️ {prefix}setprefix - изменить префикс команд",
-        f"🔄 {prefix}restart - перезапустить юзербота"
-    ]
-
-    message = f"💡 Команды юзербота (префикс: '{prefix}')\n\n"
-    if modules_list:
-        message += "✅ Загруженные модули:\n"
-        message += "\n".join(f"   - {get_module_info(m)}" for m in modules_list)
-    else:
-        message += "❌ Нет загруженных модулей.\n"
-    
-    message += "\n✅ Основные команды:\n" + "\n".join(base_commands)
-    await event.edit(message)
-
-async def handle_info(event):
-    if not await is_owner(event):
-        return
-    
-    global received_messages_count, active_users
-    received_messages_count += 1
-    active_users.add(event.sender_id)
-
-    uptime = str(datetime.now() - start_time).split('.')[0]
-    user_name = (await event.client.get_me()).first_name
-    
-    info_msg = (
-        f"🔍 Acroka - UserBot\n\n"
-        f"👤 Владелец: {user_name}\n"
-        f"💻 Платформа: {platform.system()}\n"
-        f"⏳ Время работы: {uptime}\n"
-        f"✨ Telethon: {telethon.__version__}\n"
-        f"📥 Получено: {received_messages_count}\n"
-        f"📤 Отправлено: {sent_messages_count}\n"
-        f"👥 Пользователей: {len(active_users)}\n"
-        f"🟢 Статус: Активен"
-    )
-    await event.edit(info_msg)
-
-async def handle_ping(event):
-    if not await is_owner(event):
-        return
-    
-    global received_messages_count, active_users
-    received_messages_count += 1
-    active_users.add(event.sender_id)
-
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            'ping', '-c', '1', 'google.com',
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await proc.communicate()
-        
-        if proc.returncode == 0:
-            time = stdout.decode().split('time=')[1].split()[0]
-            await event.edit(f"✅ Пинг: {time}")
-        else:
-            await event.edit("❌ Ошибка пинга!")
-    except Exception as e:
-        await event.edit(f"❌ Ошибка: {str(e)}")
-
-async def load_module(module_name, client):
-    """Загрузка и инициализация модуля с полной перезагрузкой"""
-    try:
-        module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
-        
-        # Полная очистка кэша
-        cache_dir = os.path.join('source', 'mods', '__pycache__')
-        if os.path.exists(cache_dir):
-            import shutil
-            shutil.rmtree(cache_dir)
-            print(f"🧹 Полностью очищен кэш модулей")
-        
-        # Удаление из sys.modules с проверкой атрибутов
-        if module_name in sys.modules:
-            old_module = sys.modules[module_name]
-            if hasattr(old_module, 'event_handlers'):
-                for handler in old_module.event_handlers:
-                    client.remove_event_handler(handler)
-            del sys.modules[module_name]
-        
-        # Принудительная перезагрузка модуля
-        spec = importlib.util.spec_from_file_location(module_name, module_path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
-        
-        # Новая система регистрации обработчиков
-        if hasattr(module, 'on_load'):
-            print(f"🔹 Инициализация {module_name} с новой системой обработчиков")
-            await module.on_load(client, get_prefix(), force_reload=True)
-        
-        if module_name not in loaded_modules:
-            loaded_modules.append(module_name)
-            
-        print(f"✅ Модуль {module_name} полностью перезагружен")
-        return module
-        
-    except Exception as e:
-        print(f"❌ Критическая ошибка загрузки {module_name}: {str(e)}")
-        return None
-
-async def handle_loadmod(event):
-    """Обработчик команды загрузки модуля"""
-    try:
-        if not await is_owner(event):
-            await event.delete()
-            return
-    
-        if not event.is_reply:
-            response = await event.edit("❌ Ответьте на сообщение с файлом .py")
-            await asyncio.sleep(3)
-            await response.delete()
-            return
-
-        reply = await event.get_reply_message()
-        
-        if not reply.media or not reply.file.name.endswith('.py'):
-            response = await event.edit("❌ Файл должен быть с расширением .py")
-            await asyncio.sleep(3)
-            await response.delete()
-            return
-
-        try:
-            # Скачиваем файл модуля
-            file = await reply.download_media(MODS_DIRECTORY)
-            module_name = os.path.splitext(os.path.basename(file))[0]
-            
-            # Проверяем синтаксис перед загрузкой
-            with open(file, 'r', encoding='utf-8') as f:
-                compile(f.read(), file, 'exec')
-            
-            # Перезагружаем модуль если он уже был загружен
-            if module_name in loaded_modules:
-                print(f"♻️ Перезагрузка модуля {module_name}")
-                if module_name in sys.modules:
-                    del sys.modules[module_name]
-                loaded_modules.remove(module_name)
-            
-            # Загружаем модуль
-            if await load_module(module_name, event.client):
-                response = await event.edit(f"✅ Модуль '{module_name}' успешно загружен!")
-            else:
-                response = await event.edit(f"❌ Не удалось загрузить модуль '{module_name}'")
-            
-            await asyncio.sleep(3)
-            await response.delete()
-            
-        except SyntaxError as se:
-            response = await event.edit(f"❌ Ошибка синтаксиса: {str(se)}")
-            await asyncio.sleep(5)
-            await response.delete()
-            if os.path.exists(file):
-                os.remove(file)
-                
-        except Exception as e:
-            response = await event.edit(f"❌ Ошибка загрузки: {str(e)}")
-            await asyncio.sleep(3)
-            await response.delete()
-            
-    except Exception as e:
-        print(f"💥 Критическая ошибка в handle_loadmod: {str(e)}")
-        await event.delete()
-
-async def handle_unloadmod(event):
-    """Обработчик удаления модуля с полной выгрузкой"""
-    if not await is_owner(event):
-        return
-    
-    module_name = event.pattern_match.group(1)
-    module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
-    
-    if not os.path.exists(module_path):
-        await event.edit(f"❌ Модуль '{module_name}' не найден")
-        return
-    
-    try:
-        # Полная выгрузка модуля
-        if module_name in sys.modules:
-            # Удаляем обработчики событий если они есть
-            if hasattr(sys.modules[module_name], 'event_handlers'):
-                for handler in sys.modules[module_name].event_handlers:
-                    event.client.remove_event_handler(handler)
-            del sys.modules[module_name]
-        
-        # Удаляем из списка загруженных
-        if module_name in loaded_modules:
-            loaded_modules.remove(module_name)
-        
-        # Удаляем файл
-        os.remove(module_path)
-        
-        await event.edit(f"✅ Модуль '{module_name}' полностью выгружен и удалён")
-    except Exception as e:
-        await event.edit(f"❌ Ошибка при удалении модуля: {str(e)}")
-
-async def translate_handler(event):
-    if not await is_owner(event):
-        return
-    
-    try:
-        global received_messages_count, active_users
-        received_messages_count += 1
-        active_users.add(event.sender_id)
-
-        # Получаем аргументы команды
-        args = event.pattern_match.groups()
-        lang1 = args[0] if args[0] else None
-        lang2 = args[1] if args[1] else None
-
-        # Проверяем, является ли сообщение ответом
-        if not event.is_reply:
-            help_msg = (
-                "📚 Использование перевода:\n\n"
-                f"{get_prefix()}tr <язык> - перевод на указанный язык\n"
-                f"{get_prefix()}tr <исходный> <целевой> - перевод между языками\n"
-                f"Пример:\n"
-                f"{get_prefix()}tr en - перевод на английский\n"
-                f"{get_prefix()}tr ru en - перевод с русского на английский"
-            )
-            await event.edit(help_msg)
-            return
-
-        # Получаем сообщение для перевода
-        replied_msg = await event.get_reply_message()
-        text_to_translate = replied_msg.text
-
-        if not text_to_translate:
-            await event.edit("❌ Сообщение не содержит текста для перевода")
-            return
-
-        # Определяем языки перевода
-        if lang1 and lang2:  # формат: .tr ru en
-            src_lang = lang1
-            dest_lang = lang2
-        elif lang1:  # формат: .tr en
-            src_lang = 'auto'
-            dest_lang = lang1
-        else:  # формат: .tr
-            await event.edit("❌ Укажите язык перевода")
-            return
-
-        # Выполняем перевод
-        translator = Translator()
-        loop = asyncio.get_event_loop()
-        
-        try:
-            # Запускаем синхронный код в отдельном потоке
-            translation = await loop.run_in_executor(
-                None,
-                lambda: translator.translate(
-                    text_to_translate,
-                    src=src_lang,
-                    dest=dest_lang
-                )
-            )
-
-            # Форматируем результат
-            result_msg = (
-                f"🌐 Перевод ({translation.src} → {dest_lang}):\n\n"
-                f"{translation.text}\n"
-            )
-            
-            if translation.pronunciation:
-                result_msg += f"\n🔊 Произношение: {translation.pronunciation}"
-
-            await event.edit(result_msg)
-
-        except ValueError as e:
-            await event.edit(f"❌ Ошибка: {str(e)}")
-        except Exception as e:
-            await event.edit(f"❌ Неизвестная ошибка: {str(e)}")
-
-    except Exception as e:
-        print(f"Ошибка в translate_handler: {str(e)}")
-        await event.edit("❌ Произошла ошибка при обработке команды")
-
-class DeferredMessage:
+# ====================== МЕНЕДЖЕР МОДУЛЕЙ ======================
+class ModuleManager:
     def __init__(self, client):
         self.client = client
-    
-    async def handler(self, event):
-        if not await is_owner(event):
-            return
-        
-        global received_messages_count, active_users, sent_messages_count
-        received_messages_count += 1
-        active_users.add(event.sender_id)
+        self.modules = {}
+        self.prefix = DEFAULT_PREFIX
+        self.start_time = datetime.now()
+        self.stats = {
+            'received': 0,
+            'sent': 0,
+            'active_users': set()
+        }
+        os.makedirs(MODS_DIR, exist_ok=True)
 
+    def set_prefix(self, prefix):
+        self.prefix = prefix
+
+    async def load_module(self, module_name):
+        """Загрузка модуля с полной изоляцией"""
         try:
-            _, count, minutes, text = event.message.text.split(' ', 3)
-            count = int(count)
-            interval = int(minutes) * 60
-        except:
-            await event.edit(f"❗ Использование: {get_prefix()}deferral <кол-во> <мин> <текст>")
-            return
-
-        msg = await event.reply(f"✅ Запланировано {count} сообщений с интервалом {minutes} мин")
-        
-        for i in range(count):
-            send_time = datetime.now() + timedelta(seconds=interval*i)
-            await self.client.send_message(
-                event.chat_id, 
-                text, 
-                schedule=send_time
+            self._clean_cache(module_name)
+            module_path = os.path.join(MODS_DIR, f"{module_name}.py")
+            
+            spec = importlib.util.spec_from_file_location(
+                f"userbot.mods.{module_name}", 
+                module_path
             )
-            sent_messages_count += 1
-            await msg.edit(f"📬 Отправлено {i+1}/{count}")
-
-async def calc_handler(event):
-    if not await is_owner(event):
-        return
-    
-    global received_messages_count, active_users
-    received_messages_count += 1
-    active_users.add(event.sender_id)
-
-    expr = re.sub(r'[^0-9+\-*/. ()]', '', event.pattern_match.group(1))
-    try:
-        result = eval(expr)
-        await event.edit(f"💡 Результат: {result}")
-    except Exception as e:
-        await event.edit(f"❌ Ошибка: {str(e)}")
-
-async def update_handler(event):
-    if not await is_owner(event):
-        return
-    
-    try:
-        await event.edit("🔄 Проверка обновлений юзербота...")
-        repo = "https://github.com/ItKenneth/AcrokaUB.git"
-        
-        # Создаем временную директорию для обновления
-        temp_dir = "temp_update"
-        if os.path.exists(temp_dir):
-            subprocess.run(['rm', '-rf', temp_dir])
-        
-        # Клонируем репозиторий
-        subprocess.run(['git', 'clone', repo, temp_dir], check=True)
-        
-        # Проверяем наличие важных файлов
-        required_files = ['modules.py', 'config.py', 'main.py']
-        for file in required_files:
-            if not os.path.exists(os.path.join(temp_dir, file)):
-                raise Exception(f"Файл {file} не найден в обновлении")
-        
-        # Копируем файлы
-        for file in required_files:
-            src = os.path.join(temp_dir, file)
-            if os.path.exists(src):
-                os.replace(src, file)
-        
-        # Удаляем временную директорию
-        subprocess.run(['rm', '-rf', temp_dir])
-        
-        await event.edit("✅ Юзербот успешно обновлен! Перезагрузка...")
-        await restart_bot()
-    except Exception as e:
-        await event.edit(f"❌ Ошибка при обновлении: {str(e)}")
-async def handle_setprefix(event):
-    if not await is_owner(event):
-        return
-    
-    global received_messages_count, active_users
-    received_messages_count += 1
-    active_users.add(event.sender_id)
-
-    new_prefix = event.pattern_match.group(1).strip()
-    
-    if len(new_prefix) != 1:
-        await event.edit("❌ Префикс должен быть одним символом!")
-        return
-    
-    # Экранируем специальные символы регулярных выражений
-    if new_prefix in r'\.^$*+?{}[]|()':
-        new_prefix = '\\' + new_prefix
-    
-    try:
-        os.makedirs('source', exist_ok=True)
-        with open(PREFIX_FILE, 'w') as f:
-            f.write(new_prefix.replace('\\', ''))  # Сохраняем без экранирования
-        
-        await event.edit(f"✅ Префикс изменён на '{new_prefix.replace('\\', '')}'! Перезагрузка...")
-        await asyncio.sleep(2)
-        await restart_bot()
-    except Exception as e:
-        await event.edit(f"❌ Ошибка при изменении префикса: {str(e)}")
-    
-async def handle_restart(event):
-    if not await is_owner(event):
-        return
-    
-    await restart_bot(event)
-
-async def download_gif():
-    if not os.path.exists(GIF_FILENAME):
-        try:
-            response = requests.get(GIF_URL, stream=True)
-            if response.status_code == 200:
-                with open(GIF_FILENAME, 'wb') as f:
-                    for chunk in response.iter_content(1024):
-                        f.write(chunk)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[f"userbot.mods.{module_name}"] = module
+            spec.loader.exec_module(module)
+            
+            handlers = []
+            if hasattr(module, 'on_load'):
+                handlers = await module.on_load(self.client, self.prefix) or []
+            
+            self.modules[module_name] = {
+                'module': module,
+                'path': module_path,
+                'handlers': handlers,
+                'loaded_at': datetime.now()
+            }
+            
+            print(f"✅ [Модуль] {module_name} успешно загружен")
+            return True
+            
         except Exception as e:
-            print(f"Ошибка загрузки GIF: {e}")
+            print(f"❌ [Ошибка] Не удалось загрузить модуль {module_name}:")
+            traceback.print_exc()
+            return False
 
-def register_event_handlers(client, prefix=None):
-    if prefix is None:
-        prefix = get_prefix()
-    
-    # Автоматическое экранирование спецсимволов в префиксе
-    escaped_prefix = re.escape(prefix)
-    
-    deferred = DeferredMessage(client)
-    
-    handlers = [
-        (rf'^{escaped_prefix}help$', handle_help),
-        (rf'^{escaped_prefix}info$', handle_info),
-        (rf'^{escaped_prefix}ping$', handle_ping),
-        (rf'^{escaped_prefix}loadmod$', handle_loadmod),
-        (rf'^{escaped_prefix}unloadmod (\w+)$', handle_unloadmod),
-        (rf'^{escaped_prefix}tr(?:\s+([a-z]+))?(?:\s+([a-z]+))?$', translate_handler), 
-        (rf'^{escaped_prefix}calc (.+)$', calc_handler),
-        (rf'^{escaped_prefix}deferral (\d+) (\d+) (.+)$', deferred.handler),
-        (rf'^{escaped_prefix}update$', update_handler),
-        (rf'^{escaped_prefix}setprefix (.+)$', handle_setprefix),
-        (rf'^{escaped_prefix}restart$', handle_restart)
-    ]
-
-    for pattern, handler in handlers:
-        client.add_event_handler(
-            handler, 
-            events.NewMessage(pattern=pattern, outgoing=True)
-        )
+    async def unload_module(self, module_name):
+        """Полная выгрузка модуля"""
+        if module_name not in self.modules:
+            return False
+            
+        module_data = self.modules[module_name]
         
-async def run_bot(token):
-    """Основная функция с восстановлением модулей"""
-    # Очистка кэша при старте
-    cache_dir = os.path.join('source', 'mods', '__pycache__')
-    if os.path.exists(cache_dir):
-        shutil.rmtree(cache_dir)
-        print(f"🧹 Очищен кэш при старте: {cache_dir}")
-    
-    print("🚀 Инициализация бота...")    
-    try:
-        # Восстановление загруженных модулей
-        if os.path.exists('.loaded_mods'):
-            with open('.loaded_mods', 'r') as f:
-                prev_loaded = f.read().splitlines()
-            os.remove('.loaded_mods')
-        else:
-            prev_loaded = []
-        
-        client = TelegramClient(
-            session=f'acroka_session_{API_ID}',
-            api_id=API_ID,
-            api_hash=API_HASH
-        )
-        
-        await client.start(bot_token=token)
-        print("✅ Клиент авторизован")
-
-        # Загрузка модулей
-        loaded_modules.clear()
-        await load_all_modules(client)
-        
-        # Восстановление ранее загруженных модулей
-        for module_name in prev_loaded:
-            if module_name not in loaded_modules:
+        try:
+            if hasattr(module_data['module'], 'on_unload'):
+                await module_data['module'].on_unload()
+            
+            for handler in module_data['handlers']:
                 try:
-                    await load_module(module_name, client)
-                except Exception as e:
-                    print(f"❌ Не удалось восстановить модуль {module_name}: {str(e)}")
+                    self.client.remove_event_handler(handler)
+                except:
+                    pass
+            
+            del sys.modules[f"userbot.mods.{module_name}"]
+            del self.modules[module_name]
+            
+            import gc
+            gc.collect()
+            
+            print(f"✅ [Модуль] {module_name} выгружен")
+            return True
+            
+        except Exception as e:
+            print(f"❌ [Ошибка] Не удалось выгрузить модуль {module_name}:")
+            traceback.print_exc()
+            return False
+
+    async def reload_module(self, module_name):
+        await self.unload_module(module_name)
+        return await self.load_module(module_name)
+
+    def _clean_cache(self, module_name):
+        """Очистка кэша модуля"""
+        cache_dir = os.path.join(MODS_DIR, '__pycache__')
+        if os.path.exists(cache_dir):
+            shutil.rmtree(cache_dir)
         
-        register_event_handlers(client)
-        print("🟢 Бот готов к работе")
+        pyc_file = os.path.join(MODS_DIR, f"{module_name}.pyc")
+        if os.path.exists(pyc_file):
+            os.remove(pyc_file)
+
+    def get_module_info(self, module_name):
+        """Получение информации о модуле"""
+        if module_name not in self.modules:
+            return None
+            
+        try:
+            with open(self.modules[module_name]['path'], 'r', encoding='utf-8') as f:
+                lines = [f.readline().strip() for _ in range(5)]
+                
+            info = {
+                'name': module_name,
+                'commands': 'Нет информации',
+                'description': 'Нет описания',
+                'version': '1.0'
+            }
+            
+            for line in lines:
+                if line.startswith('# name:'):
+                    info['name'] = line[7:].strip()
+                elif line.startswith('# commands:'):
+                    info['commands'] = line[11:].strip()
+                elif line.startswith('# desc:'):
+                    info['description'] = line[6:].strip()
+                elif line.startswith('# version:'):
+                    info['version'] = line[9:].strip()
+            
+            return info
+        except:
+            return {
+                'name': module_name,
+                'commands': 'Неизвестно',
+                'description': 'Нет информации',
+                'version': '1.0'
+            }
+
+    async def load_all_modules(self):
+        """Загрузка всех модулей из директории"""
+        print(f"🔍 [Система] Сканирование папки модулей...")
+        
+        if not os.path.exists(LOADED_MODS_FILE):
+            for filename in os.listdir(MODS_DIR):
+                if filename.endswith('.py') and not filename.startswith('_'):
+                    await self.load_module(filename[:-3])
+        else:
+            with open(LOADED_MODS_FILE, 'r') as f:
+                for module_name in f.read().splitlines():
+                    if module_name:
+                        await self.load_module(module_name)
+            os.remove(LOADED_MODS_FILE)
+        
+        print(f"📦 [Система] Загружено {len(self.modules)} модулей")
+
+    async def save_loaded_modules(self):
+        """Сохранение списка загруженных модулей"""
+        with open(LOADED_MODS_FILE, 'w') as f:
+            f.write('\n'.join(self.modules.keys()))
+
+# ====================== КОМАНДЫ ЯДРА ======================
+class CoreCommands:
+    def __init__(self, manager):
+        self.manager = manager
+    
+    async def is_owner(self, event):
+        """Проверка владельца бота"""
+        me = await event.client.get_me()
+        return event.sender_id == me.id
+    
+    async def update_bot(self, event):
+        """Обновление бота из репозитория"""
+        if not await self.is_owner(event):
+            return
+            
+        try:
+            await event.edit("🔄 [Система] Проверка обновлений...")
+            
+            # Клонирование репозитория
+            repo_url = "https://github.com/ItKenneth/AcrokaUB.git"
+            temp_dir = "temp_update"
+            
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # Выполнение git-команд
+            cmds = [
+                ['git', 'clone', repo_url, temp_dir],
+                ['cp', '-r', f'{temp_dir}/*', '.'],
+                ['rm', '-rf', temp_dir]
+            ]
+            
+            for cmd in cmds:
+                proc = await asyncio.create_subprocess_exec(*cmd)
+                await proc.wait()
+            
+            await event.edit("✅ [Система] Бот успешно обновлен! Перезагрузка...")
+            await self.restart_bot(event)
+            
+        except Exception as e:
+            await event.edit(f"❌ [Ошибка] Не удалось обновить бота:\n{str(e)}")
+
+    async def get_module(self, event):
+        """Отправка модуля пользователю"""
+        if not await self.is_owner(event):
+            return
+            
+        module_name = event.pattern_match.group(1)
+        
+        if module_name not in self.manager.modules:
+            await event.edit(f"❌ [Модуль] {module_name} не найден")
+            return
+            
+        try:
+            module_path = self.manager.modules[module_name]['path']
+            await event.client.send_file(
+                event.chat_id,
+                module_path,
+                caption=f"📦 Модуль: {module_name}",
+                reply_to=event.id
+            )
+            await event.delete()
+        except Exception as e:
+            await event.edit(f"❌ [Ошибка] Не удалось отправить модуль:\n{str(e)}")
+
+    async def restart_bot(self, event=None):
+        """Перезагрузка бота"""
+        if event and not await self.is_owner(event):
+            return
+            
+        if event:
+            await event.edit("🔄 [Система] Перезагрузка...")
+        
+        await self.manager.save_loaded_modules()
+        os.execl(sys.executable, sys.executable, *sys.argv)
+
+    async def handle_help(self, event):
+        """Показ списка команд"""
+        if not await self.is_owner(event):
+            return
+        
+        self.manager.stats['received'] += 1
+        self.manager.stats['active_users'].add(event.sender_id)
+
+        prefix = self.manager.prefix
+        base_commands = [
+            f"📜 {prefix}info - Информация о боте",
+            f"🏓 {prefix}ping - Проверка пинга",
+            f"📦 {prefix}loadmod - Загрузить модуль (ответ на файл)",
+            f"🗑️ {prefix}unloadmod <имя> - Выгрузить модуль",
+            f"🔄 {prefix}reloadmod <имя> - Перезагрузить модуль",
+            f"📤 {prefix}getmod <имя> - Получить файл модуля",
+            f"🔄 {prefix}update - Обновить бота",
+            f"⚙️ {prefix}setprefix <символ> - Изменить префикс",
+            f"🔄 {prefix}restart - Перезапустить бота",
+            f"📋 {prefix}modules - Список модулей"
+        ]
+
+        message = "✨ <b>Доступные команды:</b>\n"
+        message += f"<code>Префикс: '{prefix}'</code>\n\n"
+        
+        message += "🔹 <b>Основные команды:</b>\n"
+        message += "\n".join(f"• {cmd}" for cmd in base_commands)
+        
+        if self.manager.modules:
+            message += "\n\n🔹 <b>Модули:</b>\n"
+            for name in self.manager.modules:
+                info = self.manager.get_module_info(name)
+                message += f"• <code>{name}</code> - {info['commands']}\n"
+        
+        await event.edit(message, parse_mode='html')
+
+    def register_handlers(self):
+        """Регистрация обработчиков команд"""
+        prefix = re.escape(self.manager.prefix)
+        
+        cmd_handlers = [
+            (rf'^{prefix}help$', self.handle_help),
+            (rf'^{prefix}update$', self.update_bot),
+            (rf'^{prefix}getmod (\w+)$', self.get_module),
+            (rf'^{prefix}restart$', self.restart_bot),
+        ]
+        
+        for pattern, handler in cmd_handlers:
+            self.manager.client.add_event_handler(
+                handler,
+                events.NewMessage(pattern=pattern, outgoing=True)
+            )
+
+# ====================== ЗАПУСК БОТА ======================
+async def main():
+    # Инициализация клиента
+    client = TelegramClient('userbot_session', API_ID, API_HASH)
+    await client.start(bot_token=BOT_TOKEN)
+    print("✅ [Система] Бот авторизован")
+
+    # Загрузка префикса
+    prefix = DEFAULT_PREFIX
+    if os.path.exists(PREFIX_FILE):
+        with open(PREFIX_FILE, 'r') as f:
+            prefix = f.read().strip() or DEFAULT_PREFIX
+
+    # Инициализация менеджера модулей
+    manager = ModuleManager(client)
+    manager.set_prefix(prefix)
+    await manager.load_all_modules()
+
+    # Регистрация команд ядра
+    CoreCommands(manager).register_handlers()
+
+    print("🟢 [Система] Бот запущен и готов к работе")
+    try:
         await client.run_until_disconnected()
-        
-    except Exception as e:
-        print(f"💥 Ошибка: {str(e)}")
     finally:
-        if 'client' in locals():
-            await client.disconnect()
+        await manager.save_loaded_modules()
+        await client.disconnect()
 
-def generate_username():
-    random_part = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
-    return f'acroka_{random_part}_bot'
-
-if __name__ == "__main__":
-    asyncio.run(run_bot())
+if __name__ == '__main__':
+    asyncio.run(main())
