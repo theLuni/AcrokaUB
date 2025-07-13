@@ -1,115 +1,108 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# Цвета для вывода
+# Цвета
 RED='\033[1;31m'
 GREEN='\033[1;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[1;34m'
 NC='\033[0m'
 
-# ASCII-арт логотипа
 show_logo() {
     clear
     echo -e "${BLUE}"
-    echo -e "   █████╗  ██████╗██████╗  ██████╗ ██╗  ██╗ █████╗ "
-    echo -e "  ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██║ ██╔╝██╔══██╗"
-    echo -e "  ███████║██║     ██████╔╝██║   ██║█████╔╝ ███████║"
-    echo -e "  ██╔══██║██║     ██╔══██╗██║   ██║██╔═██╗ ██╔══██║"
-    echo -e "  ██║  ██║╚██████╗██║  ██║╚██████╔╝██║  ██╗██║  ██║"
-    echo -e "  ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝"
+    echo "   █████╗  ██████╗██████╗  ██████╗ ██╗  ██╗ █████╗ "
+    echo "  ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██║ ██╔╝██╔══██╗"
+    echo "  ███████║██║     ██████╔╝██║   ██║█████╔╝ ███████║"
+    echo "  ██╔══██║██║     ██╔══██╗██║   ██║██╔═██╗ ██╔══██║"
+    echo "  ██║  ██║╚██████╗██║  ██║╚██████╔╝██║  ██╗██║  ██║"
+    echo "  ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝"
     echo -e "${NC}"
     echo -e "${GREEN}          Установщик Acroka UserBot${NC}"
     echo -e "${YELLOW}--------------------------------------------${NC}"
     echo
 }
 
-# Проверка интернета
-check_internet() {
-    echo -e "${YELLOW}[*] Проверка интернет-соединения...${NC}"
-    if ! ping -c 1 google.com >/dev/null 2>&1; then
-        echo -e "${RED}[✗] Ошибка: нет интернет-соединения!${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}[✓] Интернет доступен${NC}"
-}
-
-# Установка пакетов
-install_packages() {
-    echo -e "\n${YELLOW}[*] Обновление пакетов...${NC}"
-    pkg update -y && \
-    echo -e "${YELLOW}[*] Установка зависимостей...${NC}" && \
-    pkg install -y git python python-pip tmux || {
-        echo -e "${RED}[✗] Ошибка установки пакетов!${NC}"
-        exit 1
+install() {
+    # 1. Обновление пакетов
+    echo -e "${YELLOW}[*] Обновление пакетов...${NC}"
+    pkg update -y || {
+        echo -e "${RED}[✗] Ошибка обновления пакетов${NC}"
+        return 1
     }
-    echo -e "${GREEN}[✓] Пакеты успешно установлены${NC}"
-}
 
-# Клонирование репозитория
-clone_repo() {
-    echo -e "\n${YELLOW}[*] Клонирование репозитория...${NC}"
+    # 2. Установка зависимостей
+    echo -e "${YELLOW}[*] Установка зависимостей...${NC}"
+    pkg install -y git python python-pip tmux || {
+        echo -e "${RED}[✗] Ошибка установки зависимостей${NC}"
+        return 1
+    }
+
+    # 3. Клонирование репозитория
+    echo -e "${YELLOW}[*] Клонирование репозитория...${NC}"
     if [ -d "AcrokaUB" ]; then
-        echo -e "${BLUE}[i] Директория AcrokaUB уже существует, обновляю...${NC}"
         cd AcrokaUB
         git pull || {
-            echo -e "${RED}[✗] Ошибка при обновлении репозитория!${NC}"
-            exit 1
+            echo -e "${RED}[✗] Ошибка обновления репозитория${NC}"
+            return 1
         }
     else
         git clone https://github.com/theLuni/AcrokaUB.git || {
-            echo -e "${RED}[✗] Ошибка клонирования репозитория!${NC}"
-            exit 1
+            echo -e "${RED}[✗] Ошибка клонирования репозитория${NC}"
+            return 1
         }
-        cd AcrokaUB
+        cd AcrokaUB || {
+            echo -e "${RED}[✗] Не удалось перейти в директорию${NC}"
+            return 1
+        }
     fi
-    echo -e "${GREEN}[✓] Репозиторий успешно склонирован/обновлён${NC}"
-}
 
-# Установка зависимостей Python
-install_python_deps() {
-    echo -e "\n${YELLOW}[*] Установка Python-зависимостей...${NC}"
+    # 4. Установка Python-зависимостей
+    echo -e "${YELLOW}[*] Установка Python-зависимостей...${NC}"
     pip install -r requirements.txt || {
-        echo -e "${RED}[✗] Ошибка установки зависимостей!${NC}"
-        exit 1
+        echo -e "${RED}[✗] Ошибка установки Python-зависимостей${NC}"
+        return 1
     }
-    echo -e "${GREEN}[✓] Зависимости успешно установлены${NC}"
-}
 
-# Настройка хранилища
-setup_storage() {
-    echo -e "\n${YELLOW}[*] Настройка хранилища...${NC}"
+    # 5. Настройка хранилища
+    echo -e "${YELLOW}[*] Настройка хранилища...${NC}"
     mkdir -p storage/{sessions,cache,logs}
-    chmod -R 777 storage
-    echo -e "${GREEN}[✓] Хранилище настроено${NC}"
-}
+    chmod -R 700 storage
 
-# Настройка автозапуска
-setup_autostart() {
-    echo -e "\n${YELLOW}[*] Настройка автозапуска...${NC}"
-    
-    # Способ 1: через termux-boot
+    # 6. Настройка автозапуска
+    echo -e "${YELLOW}[*] Настройка автозапуска...${NC}"
     mkdir -p ~/.termux/boot
     cat > ~/.termux/boot/run_acrokadb <<'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 termux-wake-lock
 cd ~/AcrokaUB
-while true; do
-    python3 main.py
-    sleep 10
-done
+python3 main.py
 EOF
     chmod +x ~/.termux/boot/run_acrokadb
-    
-    echo -e "${GREEN}[✓] Автозапуск через termux-boot настроен${NC}"
+
+    return 0
 }
 
-# Завершение установки
-finish_installation() {
-    echo -e "\n${YELLOW}--------------------------------------------${NC}"
-    echo -e "${GREEN}[✓] Установка успешно завершена!${NC}"
-    echo -e "${BLUE}"
-    echo -e "  Для запуска бота:"
-    echo -e "  1. Закройте и снова откройте Termux"
-    echo -e "  2. Или вручную: ${NC}cd ~/AcrokaUB && python3 main.py"
-    echo -e "${BLUE}"
-    echo -e "  Для остановки: ${NC}pkill"
+main() {
+    show_logo
+    
+    # Проверка интернета
+    echo -e "${YELLOW}[*] Проверка интернет-соединения...${NC}"
+    if ! ping -c 1 google.com >/dev/null 2>&1; then
+        echo -e "${RED}[✗] Нет интернет-соединения!${NC}"
+        exit 1
+    fi
+    
+    if install; then
+        echo -e "\n${GREEN}[✓] Установка успешно завершена!${NC}"
+        echo -e "${BLUE}"
+        echo "Для запуска бота:"
+        echo "1. Закройте и снова откройте Termux"
+        echo "2. Или вручную: cd ~/AcrokaUB && python3 main.py"
+        echo -e "${NC}"
+    else
+        echo -e "\n${RED}[✗] Установка не удалась${NC}"
+        exit 1
+    fi
+}
+
+main
