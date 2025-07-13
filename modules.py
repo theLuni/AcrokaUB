@@ -216,7 +216,39 @@ class CoreCommands:
                 f"<code>{str(e)}</code>",
                 parse_mode='html'
             )
+    async def handle_info(self, event: Message):
+        if not await self.is_owner(event):
+            return
+            
+        me = await self.manager.client.get_me()
+        uptime = datetime.now() - self.manager.start_time
+        
+        # Получаем информацию о системе
+        sys_info = [
+            f"<b>ОС:</b> {platform.system()} {platform.release()}",
+            f"<b>Python:</b> {platform.python_version()}",
+            f"<b>Telethon:</b> {telethon.__version__}",
+            f"<b>Память:</b> {self.get_memory_usage()} MB",
+            f"<b>Диск:</b> {self.get_disk_usage()}"
+        ]
+        
+        # Красивое оформление информации
+        info_msg = [
+            "🤖 <b>Acroka UserBot Info</b>",
+            "",
+            f"👤 <b>Владелец:</b> <a href='tg://user?id={me.id}'>{me.first_name}</a>",
+            f"🆔 <b>ID:</b> <code>{me.id}</code>",
+            f"⏱ <b>Аптайм:</b> {str(timedelta(seconds=uptime.seconds)).split('.')[0]}",
+            f"📦 <b>Модулей:</b> {len(self.manager.modules)}",
+            "",
+            "⚙️ <b>Система:</b>",
+            *sys_info,
+            "",
+            f"🔗 <b>Репозиторий:</b> <code>{self.repo_url}</code>"
+        ]
 
+        await event.edit("\n".join(info_msg), parse_mode='html', link_preview=False)
+        
     async def handle_unloadmod(self, event: Message):
         """Полностью удалить модуль"""
         if not await self.is_owner(event):
