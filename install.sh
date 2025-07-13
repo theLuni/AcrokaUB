@@ -58,7 +58,7 @@ install() {
 
     # 4. Установка Python-зависимостей
     echo -e "${YELLOW}[*] Установка Python-зависимостей...${NC}"
-    pip install -r requirements.txt || {
+    pip install -r dops.txt || {
         echo -e "${RED}[✗] Ошибка установки Python-зависимостей${NC}"
         return 1
     }
