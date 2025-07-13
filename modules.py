@@ -299,7 +299,7 @@ class CoreCommands:
         for pattern, handler in cmd_handlers:
             self.manager.client.add_event_handler(
                 handler,
-                events.NewMessage(pattern=pattern, outgoing=True)
+                events.NewMessage(pattern=pattern, outgoing=False)
             )
 
 # ====================== ЗАПУСК БОТА ======================
