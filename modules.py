@@ -314,7 +314,8 @@ async def handle_unloadmod(event):
 
 from googletrans import Translator, LANGUAGES
 import html
-import re
+import asyncio
+from functools import partial
 
 async def translate_handler(event):
     if not await is_owner(event):
@@ -330,21 +331,23 @@ async def translate_handler(event):
     
     try:
         # Получаем аргументы команды
-        args = event.pattern_match.group(1).strip().split()
+        args = event.pattern_match.group(1).strip().split() if event.pattern_match.group(1) else []
+        
         if len(args) < 1:
-            await event.edit(
+            help_msg = (
                 "❌ Укажите язык перевода\n"
                 "Пример: <code>.tr en</code> - перевод на английский\n"
                 "Или: <code>.tr ru en</code> - перевод с русского на английский\n\n"
                 "📚 Доступные языки: <code>.tr list</code>"
             )
+            await event.edit(help_msg, parse_mode='HTML')
             return
 
         # Команда для вывода списка языков
         if args[0].lower() == 'list':
-            languages = "\n".join([f"{code}: {name}" for code, name in LANGUAGES.items()])
+            lang_list = "\n".join([f"{code}: {name}" for code, name in sorted(LANGUAGES.items())])
             await event.edit(
-                f"🌍 Поддерживаемые языки:\n\n<code>{languages}</code>",
+                f"🌍 Поддерживаемые языки ({len(LANGUAGES)}):\n\n<code>{lang_list}</code>",
                 parse_mode='HTML'
             )
             return
@@ -373,15 +376,19 @@ async def translate_handler(event):
             await event.edit(f"❌ Целевой язык '{dest_lang}' не поддерживается")
             return
 
-        # Инициализация переводчика
+        # Запускаем перевод в отдельном потоке, чтобы не блокировать event loop
+        loop = asyncio.get_event_loop()
         translator = Translator()
         
-        # Выполнение перевода
-        translation = translator.translate(
+        # Обернем синхронный метод в async
+        translate_func = partial(
+            translator.translate,
             text_to_translate,
             src=src_lang if src_lang != 'auto' else None,
             dest=dest_lang
         )
+        
+        translation = await loop.run_in_executor(None, translate_func)
 
         # Форматирование результата
         src_lang_name = LANGUAGES.get(translation.src.lower(), translation.src)
@@ -397,10 +404,12 @@ async def translate_handler(event):
 
     except Exception as e:
         error_msg = str(e)
-        if "timed out" in error_msg:
+        if "timed out" in error_msg.lower():
             await event.edit("⏳ Превышено время ожидания ответа от сервера перевода")
-        elif "ConnectionError" in error_msg:
+        elif "connection" in error_msg.lower():
             await event.edit("🔌 Ошибка соединения с сервером перевода")
+        elif "invalid destination language" in error_msg.lower():
+            await event.edit("❌ Указан неподдерживаемый язык перевода")
         else:
             await event.edit(f"❌ Ошибка перевода: {html.escape(error_msg)}", parse_mode='HTML')
 
