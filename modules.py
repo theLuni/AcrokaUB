@@ -9,15 +9,15 @@ import platform
 import telethon
 from datetime import datetime
 from telethon import TelegramClient, events
-from config import API_ID, API_HASH  # Убрали BOT_TOKEN, так как это юзербот
+from telethon.tl.types import Message
+from config import API_ID, API_HASH
 
 # ====================== КОНСТАНТЫ ======================
 MODS_DIR = 'source/mods/'
 PREFIX_FILE = 'source/prefix.txt'
 DEFAULT_PREFIX = '.'
 LOADED_MODS_FILE = '.loaded_mods'
-GIF_URL = "https://tenor.com/vzU4iQebtgZ.gif"
-GIF_FILENAME = "welcome.gif"
+SESSION_FILE = 'userbot_session'
 
 # ====================== МЕНЕДЖЕР МОДУЛЕЙ ======================
 class ModuleManager:
@@ -26,18 +26,10 @@ class ModuleManager:
         self.modules = {}
         self.prefix = DEFAULT_PREFIX
         self.start_time = datetime.now()
-        self.stats = {
-            'received': 0,
-            'sent': 0,
-            'active_users': set()
-        }
         os.makedirs(MODS_DIR, exist_ok=True)
 
-    def set_prefix(self, prefix):
-        self.prefix = prefix
-
-    async def load_module(self, module_name):
-        """Загрузка модуля с полной изоляцией"""
+    async def load_module(self, module_name: str) -> bool:
+        """Загрузка модуля с обработкой ошибок"""
         try:
             self._clean_cache(module_name)
             module_path = os.path.join(MODS_DIR, f"{module_name}.py")
@@ -69,8 +61,8 @@ class ModuleManager:
             traceback.print_exc()
             return False
 
-    async def unload_module(self, module_name):
-        """Полная выгрузка модуля"""
+    async def unload_module(self, module_name: str) -> bool:
+        """Выгрузка модуля с очисткой"""
         if module_name not in self.modules:
             return False
             
@@ -81,16 +73,10 @@ class ModuleManager:
                 await module_data['module'].on_unload()
             
             for handler in module_data['handlers']:
-                try:
-                    self.client.remove_event_handler(handler)
-                except:
-                    pass
+                self.client.remove_event_handler(handler)
             
             del sys.modules[f"userbot.mods.{module_name}"]
             del self.modules[module_name]
-            
-            import gc
-            gc.collect()
             
             print(f"✅ [Модуль] {module_name} выгружен")
             return True
@@ -100,11 +86,7 @@ class ModuleManager:
             traceback.print_exc()
             return False
 
-    async def reload_module(self, module_name):
-        await self.unload_module(module_name)
-        return await self.load_module(module_name)
-
-    def _clean_cache(self, module_name):
+    def _clean_cache(self, module_name: str):
         """Очистка кэша модуля"""
         cache_dir = os.path.join(MODS_DIR, '__pycache__')
         if os.path.exists(cache_dir):
@@ -114,44 +96,9 @@ class ModuleManager:
         if os.path.exists(pyc_file):
             os.remove(pyc_file)
 
-    def get_module_info(self, module_name):
-        """Получение информации о модуле"""
-        if module_name not in self.modules:
-            return None
-            
-        try:
-            with open(self.modules[module_name]['path'], 'r', encoding='utf-8') as f:
-                lines = [f.readline().strip() for _ in range(5)]
-                
-            info = {
-                'name': module_name,
-                'commands': 'Нет информации',
-                'description': 'Нет описания',
-                'version': '1.0'
-            }
-            
-            for line in lines:
-                if line.startswith('# name:'):
-                    info['name'] = line[7:].strip()
-                elif line.startswith('# commands:'):
-                    info['commands'] = line[11:].strip()
-                elif line.startswith('# desc:'):
-                    info['description'] = line[6:].strip()
-                elif line.startswith('# version:'):
-                    info['version'] = line[9:].strip()
-            
-            return info
-        except:
-            return {
-                'name': module_name,
-                'commands': 'Неизвестно',
-                'description': 'Нет информации',
-                'version': '1.0'
-            }
-
     async def load_all_modules(self):
         """Загрузка всех модулей из директории"""
-        print(f"🔍 [Система] Сканирование папки модулей...")
+        print(f"🔍 [Система] Загрузка модулей...")
         
         if not os.path.exists(LOADED_MODS_FILE):
             for filename in os.listdir(MODS_DIR):
@@ -167,128 +114,89 @@ class ModuleManager:
         print(f"📦 [Система] Загружено {len(self.modules)} модулей")
 
     async def save_loaded_modules(self):
-        """Сохранение списка загруженных модулей"""
+        """Сохранение списка модулей"""
         with open(LOADED_MODS_FILE, 'w') as f:
             f.write('\n'.join(self.modules.keys()))
 
-# ====================== КОМАНДЫ ЯДРА ======================
+# ====================== ОСНОВНЫЕ КОМАНДЫ ======================
 class CoreCommands:
     def __init__(self, manager):
         self.manager = manager
         self.owner_id = None
     
     async def initialize(self):
+        """Инициализация владельца"""
         me = await self.manager.client.get_me()
         self.owner_id = me.id
-        print(f"🔐 [Система] Владелец сессии установлен: {self.owner_id}")
-    
-    async def is_owner(self, event):
-        """Проверка владельца бота"""
-        return event.sender_id == self.owner_id
-    
-    async def update_bot(self, event):
-        """Обновление бота из репозитория"""
-        if not await self.is_owner(event):
-            return
-            
-        try:
-            await event.edit("🔄 [Система] Проверка обновлений...")
-            
-            # Клонирование репозитория
-            repo_url = "https://github.com/theLuni/AcrokaUB.git"
-            temp_dir = "temp_update"
-            
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-            
-            os.makedirs(temp_dir, exist_ok=True)
-            
-            # Выполнение git-команд
-            cmds = [
-                ['git', 'clone', repo_url, temp_dir],
-                ['cp', '-r', f'{temp_dir}/*', '.'],
-                ['rm', '-rf', temp_dir]
-            ]
-            
-            for cmd in cmds:
-                proc = await asyncio.create_subprocess_exec(*cmd)
-                await proc.wait()
-            
-            await event.edit("✅ [Система] Бот успешно обновлен! Перезагрузка...")
-            await self.restart_bot(event)
-            
-        except Exception as e:
-            await event.edit(f"❌ [Ошибка] Не удалось обновить бота:\n{str(e)}")
+        print(f"🔐 [Система] Владелец ID: {self.owner_id}")
 
-    async def get_module(self, event):
-        """Отправка модуля пользователю"""
-        if not await self.is_owner(event):
-            return
-            
-        module_name = event.pattern_match.group(1)
-        
-        if module_name not in self.manager.modules:
-            await event.edit(f"❌ [Модуль] {module_name} не найден")
-            return
-            
+    async def is_owner(self, event: Message) -> bool:
+        """Проверка прав владельца"""
+        if event.sender_id == self.owner_id:
+            return True
         try:
-            module_path = self.manager.modules[module_name]['path']
-            await event.client.send_file(
-                event.chat_id,
-                module_path,
-                caption=f"📦 Модуль: {module_name}",
-                reply_to=event.id
-            )
             await event.delete()
-        except Exception as e:
-            await event.edit(f"❌ [Ошибка] Не удалось отправить модуль:\n{str(e)}")
+        except:
+            pass
+        return False
 
-    async def restart_bot(self, event=None):
-        """Перезагрузка бота"""
+    async def handle_help(self, event: Message):
+        """Обработчик команды помощи"""
+        if not await self.is_owner(event):
+            return
+            
+        prefix = self.manager.prefix
+        commands = [
+            f"{prefix}help - Список команд",
+            f"{prefix}ping - Проверка работоспособности",
+            f"{prefix}info - Информация о юзерботе",
+            f"{prefix}loadmod - Загрузить модуль (ответ на файл)",
+            f"{prefix}restart - Перезапуск юзербота"
+        ]
+        
+        await event.edit(
+            "✨ <b>Доступные команды:</b>\n" + 
+            "\n".join(f"• {cmd}" for cmd in commands),
+            parse_mode='html'
+        )
+
+    async def handle_ping(self, event: Message):
+        """Проверка пинга"""
+        if not await self.is_owner(event):
+            return
+            
+        start = datetime.now()
+        msg = await event.edit("🏓 Pong!")
+        latency = (datetime.now() - start).microseconds / 1000
+        await msg.edit(f"🏓 Pong! | {latency}ms")
+
+    async def handle_info(self, event: Message):
+        """Информация о юзерботе"""
+        if not await self.is_owner(event):
+            return
+            
+        me = await self.manager.client.get_me()
+        uptime = datetime.now() - self.manager.start_time
+        
+        await event.edit(
+            f"🤖 <b>UserBot Info</b>\n\n"
+            f"👤 <b>Владелец:</b> {me.first_name}\n"
+            f"🆔 <b>ID:</b> {me.id}\n"
+            f"⏱ <b>Аптайм:</b> {str(uptime).split('.')[0]}\n"
+            f"⚙️ <b>Версия Telethon:</b> {telethon.__version__}",
+            parse_mode='html'
+        )
+
+    async def restart_bot(self, event: Message = None):
+        """Перезагрузка юзербота"""
         if event and not await self.is_owner(event):
             return
             
         if event:
-            await event.edit("🔄 [Система] Перезагрузка...")
+            await event.edit("🔄 Перезагрузка...")
         
         await self.manager.save_loaded_modules()
         os.execl(sys.executable, sys.executable, *sys.argv)
-
-    async def handle_help(self, event):
-        """Показ списка команд"""
-        if not await self.is_owner(event):
-            return
-        
-        self.manager.stats['received'] += 1
-        self.manager.stats['active_users'].add(event.sender_id)
-
-        prefix = self.manager.prefix
-        base_commands = [
-            f"📜 {prefix}info - Информация о боте",
-            f"🏓 {prefix}ping - Проверка пинга",
-            f"📦 {prefix}loadmod - Загрузить модуль (ответ на файл)",
-            f"🗑️ {prefix}unloadmod <имя> - Выгрузить модуль",
-            f"🔄 {prefix}reloadmod <имя> - Перезагрузить модуль",
-            f"📤 {prefix}getmod <имя> - Получить файл модуля",
-            f"🔄 {prefix}update - Обновить бота",
-            f"⚙️ {prefix}setprefix <символ> - Изменить префикс",
-            f"🔄 {prefix}restart - Перезапустить бота",
-            f"📋 {prefix}modules - Список модулей"
-        ]
-
-        message = "✨ <b>Доступные команды:</b>\n"
-        message += f"<code>Префикс: '{prefix}'</code>\n\n"
-        
-        message += "🔹 <b>Основные команды:</b>\n"
-        message += "\n".join(f"• {cmd}" for cmd in base_commands)
-        
-        if self.manager.modules:
-            message += "\n\n🔹 <b>Модули:</b>\n"
-            for name in self.manager.modules:
-                info = self.manager.get_module_info(name)
-                message += f"• <code>{name}</code> - {info['commands']}\n"
-        
-        await event.edit(message, parse_mode='html')
 
     def register_handlers(self):
         """Регистрация обработчиков команд"""
@@ -296,14 +204,9 @@ class CoreCommands:
         
         cmd_handlers = [
             (rf'^{prefix}help$', self.handle_help),
-            (rf'^{prefix}update$', self.update_bot),
-            (rf'^{prefix}getmod (\w+)$', self.get_module),
-            (rf'^{prefix}restart$', self.restart_bot),
             (rf'^{prefix}ping$', self.handle_ping),
             (rf'^{prefix}info$', self.handle_info),
-            (rf'^{prefix}setprefix (.+)$', self.handle_setprefix),
-            (rf'^{prefix}loadmod$', self.handle_loadmod),
-            (rf'^{prefix}unloadmod (\w+)$', self.handle_unloadmod),
+            (rf'^{prefix}restart$', self.restart_bot),
         ]
         
         for pattern, handler in cmd_handlers:
@@ -314,32 +217,37 @@ class CoreCommands:
 
 # ====================== ЗАПУСК ЮЗЕРБОТА ======================
 async def main():
-    # Инициализация клиента (userbot, не бот)
-    client = TelegramClient('userbot_session', API_ID, API_HASH)
-    await client.start()
-    print("✅ [Система] Юзербот авторизован")
-
-    # Загрузка префикса
-    prefix = DEFAULT_PREFIX
-    if os.path.exists(PREFIX_FILE):
-        with open(PREFIX_FILE, 'r') as f:
-            prefix = f.read().strip() or DEFAULT_PREFIX
-
-    # Инициализация менеджера модулей
-    manager = ModuleManager(client)
-    manager.set_prefix(prefix)
-    await manager.load_all_modules()
-
-    # Регистрация команд ядра
-    core_commands = CoreCommands(manager)
-    await core_commands.initialize()  # Инициализируем владельца
-    core_commands.register_handlers()
-
-    print("🟢 [Система] Юзербот запущен и готов к работе")
+    # Инициализация клиента
+    client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
+    
     try:
+        await client.start()
+        print("✅ [Система] Юзербот авторизован")
+
+        # Загрузка префикса
+        prefix = DEFAULT_PREFIX
+        if os.path.exists(PREFIX_FILE):
+            with open(PREFIX_FILE, 'r') as f:
+                prefix = f.read().strip() or DEFAULT_PREFIX
+
+        # Инициализация менеджера модулей
+        manager = ModuleManager(client)
+        manager.prefix = prefix
+        
+        # Инициализация команд
+        core_commands = CoreCommands(manager)
+        await core_commands.initialize()
+        core_commands.register_handlers()
+
+        print(f"🟢 [Система] Юзербот запущен | Префикс: '{prefix}'")
+        print("🔹 Отправьте .help для списка команд")
+        
         await client.run_until_disconnected()
+        
+    except Exception as e:
+        print(f"❌ [Ошибка] {str(e)}")
+        traceback.print_exc()
     finally:
-        await manager.save_loaded_modules()
         await client.disconnect()
 
 if __name__ == '__main__':
