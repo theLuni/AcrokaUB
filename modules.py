@@ -37,17 +37,18 @@ async def is_owner(event):
     me = await event.client.get_me()
     return event.sender_id == me.id
 
-async def load_all_modules(client):  # Принимаем client как аргумент
+async def load_all_modules(client):
+    """Загрузка модулей с защитой от дублирования"""
     if not os.path.exists(MODS_DIRECTORY):
         os.makedirs(MODS_DIRECTORY, exist_ok=True)
         return
 
-    print(f"🔍 Поиск модулей в {MODS_DIRECTORY}")
+    print(f"🔍 Сканирование {MODS_DIRECTORY}")
     for filename in os.listdir(MODS_DIRECTORY):
         if filename.endswith('.py') and not filename.startswith('_'):
             module_name = filename[:-3]
-            await load_module(module_name, client) 
-                
+            await load_module(module_name, client)
+            
 def get_module_info(module_name):
     try:
         module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
@@ -175,9 +176,14 @@ async def handle_ping(event):
         await event.edit(f"❌ Ошибка: {str(e)}")
 
 async def load_module(module_name, client):
+    """Улучшенная загрузка модуля с проверкой"""
     try:
-        print(f"🔹 Загружаем модуль: {module_name}")
+        if module_name in loaded_modules:
+            print(f"🔹 Модуль {module_name} уже загружен")
+            return None
+            
         module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
+        print(f"🔹 Загрузка модуля: {module_name}")
         
         spec = importlib.util.spec_from_file_location(module_name, module_path)
         module = importlib.util.module_from_spec(spec)
@@ -185,35 +191,30 @@ async def load_module(module_name, client):
         spec.loader.exec_module(module)
         
         if hasattr(module, 'on_load'):
-            print(f"🔹 Вызываем on_load для {module_name}")
+            print(f"🔹 Инициализация {module_name}")
             await module.on_load(client, get_prefix())
-            
-        if module_name not in loaded_modules:
-            loaded_modules.append(module_name)
-            
+        
+        loaded_modules.append(module_name)
         return module
-    except Exception as e:
-        print(f"❌ Ошибка в модуле {module_name}: {str(e)}")
-        return None
 
 async def handle_loadmod(event):
+    """Обработчик загрузки модуля с очисткой"""
     if not await is_owner(event):
         return
     
     if event.is_reply:
         reply = await event.get_reply_message()
         if reply.media:
-            # Скачиваем файл модуля
             file = await reply.download_media(MODS_DIRECTORY)
             module_name = os.path.splitext(os.path.basename(file))[0]
             
-            # Используем единую функцию загрузки
-            module = await load_module(module_name, event.client)
+            # Очищаем старый модуль если был
+            if module_name in loaded_modules:
+                loaded_modules.remove(module_name)
+                print(f"♻️ Перезагрузка модуля {module_name}")
             
-            if module:
+            if await load_module(module_name, event.client):
                 await event.edit(f"✅ Модуль '{module_name}' загружен!")
-                # Перезагружаем модули для применения изменений
-                await load_all_modules(event.client)
             else:
                 await event.edit(f"❌ Ошибка загрузки '{module_name}'")
             return
@@ -416,10 +417,11 @@ def register_event_handlers(client, prefix=None):
         )
 
 async def run_bot(token):
+    """Основная функция с защитой от дублирования"""
     print("🚀 Инициализация бота...")
     
     try:
-        # Инициализируем клиент ЛОКАЛЬНО
+        # Инициализация клиента
         client = TelegramClient(
             session=f'acroka_session_{API_ID}',
             api_id=API_ID,
@@ -427,21 +429,22 @@ async def run_bot(token):
         )
         
         await client.start(bot_token=token)
-        print("✅ Клиент Telegram успешно запущен")
+        print("✅ Клиент авторизован")
 
-        # Загружаем модули ПЕРЕДАВАЯ КЛИЕНТА
+        # Очистка загруженных модулей перед загрузкой
+        loaded_modules.clear()
         await load_all_modules(client)
         
-        # Регистрируем основные обработчики
+        # Регистрация обработчиков
         register_event_handlers(client)
         
-        print("🔄 Бот готов к работе. Ожидаем сообщений...")
+        print("🟢 Бот готов к работе")
         await client.run_until_disconnected()
         
     except Exception as e:
-        print(f"💥 Критическая ошибка: {str(e)}")
+        print(f"💥 Ошибка: {str(e)}")
     finally:
-        if 'client' in locals() and await client.is_connected():
+        if 'client' in locals():
             await client.disconnect()
             
 
