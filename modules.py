@@ -190,7 +190,7 @@ class CoreCommands:
             await event.edit("🔄 [Система] Проверка обновлений...")
             
             # Клонирование репозитория
-            repo_url = "https://github.com/ItKenneth/AcrokaUB.git"
+            repo_url = "https://github.com/theLuni/AcrokaUB.git"
             temp_dir = "temp_update"
             
             if os.path.exists(temp_dir):
