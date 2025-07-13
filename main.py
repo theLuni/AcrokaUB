@@ -69,7 +69,7 @@ class BotManager:
         import random
         import string
         chars = string.ascii_lowercase + string.digits
-        rand_part = ''.join(random.choice(chars) for _ in range(6)
+        rand_part = ''.join(random.choice(chars) for _ in range(6))  # Исправленная строка
         return f'acroka_{rand_part}_bot'
 
     async def set_bot_photo(self, username):
