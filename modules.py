@@ -9,7 +9,7 @@ import platform
 import telethon
 from datetime import datetime
 from telethon import TelegramClient, events
-from config import API_ID, API_HASH, BOT_TOKEN
+from config import API_ID, API_HASH  # Убрали BOT_TOKEN, так как это юзербот
 
 # ====================== КОНСТАНТЫ ======================
 MODS_DIR = 'source/mods/'
@@ -175,11 +175,16 @@ class ModuleManager:
 class CoreCommands:
     def __init__(self, manager):
         self.manager = manager
+        self.owner_id = None
+    
+    async def initialize(self):
+        me = await self.manager.client.get_me()
+        self.owner_id = me.id
+        print(f"🔐 [Система] Владелец сессии установлен: {self.owner_id}")
     
     async def is_owner(self, event):
         """Проверка владельца бота"""
-        me = await event.client.get_me()
-        return event.sender_id == me.id
+        return event.sender_id == self.owner_id
     
     async def update_bot(self, event):
         """Обновление бота из репозитория"""
@@ -294,20 +299,25 @@ class CoreCommands:
             (rf'^{prefix}update$', self.update_bot),
             (rf'^{prefix}getmod (\w+)$', self.get_module),
             (rf'^{prefix}restart$', self.restart_bot),
+            (rf'^{prefix}ping$', self.handle_ping),
+            (rf'^{prefix}info$', self.handle_info),
+            (rf'^{prefix}setprefix (.+)$', self.handle_setprefix),
+            (rf'^{prefix}loadmod$', self.handle_loadmod),
+            (rf'^{prefix}unloadmod (\w+)$', self.handle_unloadmod),
         ]
         
         for pattern, handler in cmd_handlers:
             self.manager.client.add_event_handler(
                 handler,
-                events.NewMessage(pattern=pattern, outgoing=False)
+                events.NewMessage(pattern=pattern, outgoing=True)
             )
 
-# ====================== ЗАПУСК БОТА ======================
+# ====================== ЗАПУСК ЮЗЕРБОТА ======================
 async def main():
-    # Инициализация клиента
+    # Инициализация клиента (userbot, не бот)
     client = TelegramClient('userbot_session', API_ID, API_HASH)
-    await client.start(bot_token=BOT_TOKEN)
-    print("✅ [Система] Бот авторизован")
+    await client.start()
+    print("✅ [Система] Юзербот авторизован")
 
     # Загрузка префикса
     prefix = DEFAULT_PREFIX
@@ -321,9 +331,11 @@ async def main():
     await manager.load_all_modules()
 
     # Регистрация команд ядра
-    CoreCommands(manager).register_handlers()
+    core_commands = CoreCommands(manager)
+    await core_commands.initialize()  # Инициализируем владельца
+    core_commands.register_handlers()
 
-    print("🟢 [Система] Бот запущен и готов к работе")
+    print("🟢 [Система] Юзербот запущен и готов к работе")
     try:
         await client.run_until_disconnected()
     finally:
