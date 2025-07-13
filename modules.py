@@ -174,7 +174,7 @@ async def handle_ping(event):
     except Exception as e:
         await event.edit(f"❌ Ошибка: {str(e)}")
 
-async def load_module(module_name, client):  # Добавляем client как аргумент
+async def load_module(module_name, client):
     try:
         print(f"🔹 Загружаем модуль: {module_name}")
         module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
@@ -186,7 +186,7 @@ async def load_module(module_name, client):  # Добавляем client как 
         
         if hasattr(module, 'on_load'):
             print(f"🔹 Вызываем on_load для {module_name}")
-            await module.on_load(client, get_prefix())  # Явно передаем префикс
+            await module.on_load(client, get_prefix())
             
         if module_name not in loaded_modules:
             loaded_modules.append(module_name)
@@ -203,17 +203,23 @@ async def handle_loadmod(event):
     if event.is_reply:
         reply = await event.get_reply_message()
         if reply.media:
+            # Скачиваем файл модуля
             file = await reply.download_media(MODS_DIRECTORY)
             module_name = os.path.splitext(os.path.basename(file))[0]
             
-            if await load_module(module_name):
+            # Используем единую функцию загрузки
+            module = await load_module(module_name, event.client)
+            
+            if module:
                 await event.edit(f"✅ Модуль '{module_name}' загружен!")
+                # Перезагружаем модули для применения изменений
+                await load_all_modules(event.client)
             else:
                 await event.edit(f"❌ Ошибка загрузки '{module_name}'")
             return
     
     await event.edit("❌ Ответьте на сообщение с файлом .py")
-
+    
 async def handle_unloadmod(event):
     if not await is_owner(event):
         return
