@@ -312,6 +312,10 @@ async def handle_unloadmod(event):
     except Exception as e:
         await event.edit(f"❌ Ошибка при удалении модуля: {str(e)}")
 
+from googletrans import Translator, LANGUAGES
+import html
+import re
+
 async def translate_handler(event):
     if not await is_owner(event):
         return
@@ -324,16 +328,81 @@ async def translate_handler(event):
         await event.reply("❗ Ответьте на сообщение для перевода")
         return
     
-    target_lang = event.pattern_match.group(1)
-    replied = await event.get_reply_message()
-    
     try:
-        url = f"https://api.mymemory.translated.net/get?q={replied.text}&langpair={detect(replied.text)}|{target_lang}"
-        response = requests.get(url).json()
-        translated = response['responseData']['translatedText']
-        await event.edit(translated)
+        # Получаем аргументы команды
+        args = event.pattern_match.group(1).strip().split()
+        if len(args) < 1:
+            await event.edit(
+                "❌ Укажите язык перевода\n"
+                "Пример: <code>.tr en</code> - перевод на английский\n"
+                "Или: <code>.tr ru en</code> - перевод с русского на английский\n\n"
+                "📚 Доступные языки: <code>.tr list</code>"
+            )
+            return
+
+        # Команда для вывода списка языков
+        if args[0].lower() == 'list':
+            languages = "\n".join([f"{code}: {name}" for code, name in LANGUAGES.items()])
+            await event.edit(
+                f"🌍 Поддерживаемые языки:\n\n<code>{languages}</code>",
+                parse_mode='HTML'
+            )
+            return
+
+        replied = await event.get_reply_message()
+        text_to_translate = replied.text
+
+        if not text_to_translate:
+            await event.edit("❌ Сообщение не содержит текста для перевода")
+            return
+
+        # Определение языков перевода
+        if len(args) == 1:  # .tr en
+            dest_lang = args[0].lower()
+            src_lang = 'auto'
+        else:  # .tr ru en
+            src_lang = args[0].lower()
+            dest_lang = args[1].lower()
+
+        # Проверка поддерживаемых языков
+        if src_lang != 'auto' and src_lang not in LANGUAGES:
+            await event.edit(f"❌ Исходный язык '{src_lang}' не поддерживается")
+            return
+
+        if dest_lang not in LANGUAGES:
+            await event.edit(f"❌ Целевой язык '{dest_lang}' не поддерживается")
+            return
+
+        # Инициализация переводчика
+        translator = Translator()
+        
+        # Выполнение перевода
+        translation = translator.translate(
+            text_to_translate,
+            src=src_lang if src_lang != 'auto' else None,
+            dest=dest_lang
+        )
+
+        # Форматирование результата
+        src_lang_name = LANGUAGES.get(translation.src.lower(), translation.src)
+        dest_lang_name = LANGUAGES.get(dest_lang, dest_lang)
+
+        result_msg = (
+            f"🌐 <b>Перевод с {src_lang_name} на {dest_lang_name}:</b>\n\n"
+            f"{html.escape(translation.text)}\n\n"
+            f"🔤 <i>Произношение:</i> {html.escape(translation.pronunciation or 'нет данных')}"
+        )
+
+        await event.edit(result_msg, parse_mode='HTML')
+
     except Exception as e:
-        await event.edit(f"❌ Ошибка перевода: {str(e)}")
+        error_msg = str(e)
+        if "timed out" in error_msg:
+            await event.edit("⏳ Превышено время ожидания ответа от сервера перевода")
+        elif "ConnectionError" in error_msg:
+            await event.edit("🔌 Ошибка соединения с сервером перевода")
+        else:
+            await event.edit(f"❌ Ошибка перевода: {html.escape(error_msg)}", parse_mode='HTML')
 
 class DeferredMessage:
     def __init__(self, client):
