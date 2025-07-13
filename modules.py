@@ -14,6 +14,10 @@ from langdetect import detect, DetectorFactory
 import re
 import importlib.util
 from config import API_ID, API_HASH, BOT_TOKEN
+from googletrans import Translator, LANGUAGES
+import html
+import asyncio
+from functools import partial
 
 # Инициализация
 DetectorFactory.seed = 0
@@ -312,109 +316,68 @@ async def handle_unloadmod(event):
     except Exception as e:
         await event.edit(f"❌ Ошибка при удалении модуля: {str(e)}")
 
-from googletrans import Translator, LANGUAGES
-import html
-import asyncio
-from functools import partial
-
 async def translate_handler(event):
     if not await is_owner(event):
         return
     
     try:
-        # Обновляем статистику
         global received_messages_count, active_users
         received_messages_count += 1
         active_users.add(event.sender_id)
 
-        # Проверяем, является ли сообщение ответом
         if not event.is_reply:
-            await event.edit("❗ Пожалуйста, ответьте на сообщение, которое нужно перевести")
+            await event.edit("❗ Ответьте на сообщение для перевода")
             return
 
-        # Получаем текст команды
-        command_text = event.pattern_match.group(1)
-        args = command_text.strip().split() if command_text else []
+        # Получаем аргументы
+        args = event.pattern_match.groups()
+        dest_lang = args[0] if args[0] else None
+        src_lang = args[1] if len(args) > 1 and args[1] else None
 
-        # Показываем справку, если нет аргументов
-        if not args:
+        if not dest_lang:
             help_msg = (
-                "📚 <b>Справка по переводу:</b>\n\n"
-                "<code>.tr en</code> - автоопределение + перевод на английский\n"
-                "<code>.tr ru en</code> - перевод с русского на английский\n"
-                "<code>.tr list</code> - список всех языков\n\n"
-                "Пример: <code>.tr es</code> переведет ответ на испанский"
+                "📚 Использование перевода:\n"
+                f"{get_prefix()}tr <язык> - перевод на указанный язык\n"
+                f"{get_prefix()}tr <исходный> <целевой> - перевод между языками\n"
+                f"Пример: {get_prefix()}tr en - перевод на английский"
             )
-            await event.edit(help_msg, parse_mode='HTML')
+            await event.edit(help_msg)
             return
 
-        # Обработка команды list
-        if args[0].lower() == 'list':
-            languages = "\n".join([f"{code}: {name}" for code, name in sorted(LANGUAGES.items())])
-            await event.edit(f"🌍 <b>Доступные языки:</b>\n\n<code>{languages}</code>", parse_mode='HTML')
-            return
-
-        # Получаем сообщение для перевода
+        # Получаем текст для перевода
         replied_msg = await event.get_reply_message()
-        text_to_translate = replied_msg.text if replied_msg else None
+        text_to_translate = replied_msg.text
 
         if not text_to_translate:
-            await event.edit("❌ Не удалось получить текст для перевода")
+            await event.edit("❌ Нет текста для перевода")
             return
 
-        # Определяем языки перевода с защитой от None
-        src_lang = args[0].lower() if len(args) > 1 else 'auto'
-        dest_lang = args[-1].lower()  # Последний аргумент - целевой язык
-
-        # Валидация языков
-        if src_lang != 'auto' and src_lang not in LANGUAGES:
-            await event.edit(f"❌ Неподдерживаемый исходный язык: {src_lang}")
-            return
-
-        if dest_lang not in LANGUAGES:
-            await event.edit(f"❌ Неподдерживаемый целевой язык: {dest_lang}")
-            return
-
-        # Выполняем перевод в отдельном потоке
-        loop = asyncio.get_event_loop()
+        # Инициализация переводчика
         translator = Translator()
 
-        try:
-            # Создаем частичную функцию для вызова в executor
-            translate_func = partial(
-                translator.translate,
-                text_to_translate,
-                src=src_lang if src_lang != 'auto' else None,
-                dest=dest_lang
-            )
+        # Выполняем перевод
+        loop = asyncio.get_event_loop()
+        translate_func = partial(
+            translator.translate,
+            text_to_translate,
+            src=src_lang if src_lang else None,
+            dest=dest_lang
+        )
+        translation = await loop.run_in_executor(None, translate_func)
 
-            translation = await loop.run_in_executor(None, translate_func)
+        # Форматируем результат
+        result_msg = (
+            f"🌐 Перевод ({translation.src} → {dest_lang}):\n\n"
+            f"{translation.text}\n\n"
+        )
+        
+        if translation.pronunciation:
+            result_msg += f"🔊 Произношение: {translation.pronunciation}"
 
-            # Форматируем результат
-            src_lang_name = LANGUAGES.get(translation.src.lower(), translation.src)
-            dest_lang_name = LANGUAGES.get(dest_lang, dest_lang)
-
-            result_msg = (
-                f"🌐 <b>Перевод с {src_lang_name} на {dest_lang_name}:</b>\n\n"
-                f"{html.escape(translation.text)}\n\n"
-            )
-
-            if translation.pronunciation:
-                result_msg += f"🔊 <i>Произношение:</i> {html.escape(translation.pronunciation)}"
-
-            await event.edit(result_msg, parse_mode='HTML')
-
-        except Exception as e:
-            error_msg = str(e)
-            if "timed out" in error_msg.lower():
-                await event.edit("⏳ Сервер перевода не отвечает, попробуйте позже")
-            elif "connection" in error_msg.lower():
-                await event.edit("🔌 Ошибка подключения к серверу перевода")
-            else:
-                await event.edit(f"❌ Произошла ошибка: {html.escape(error_msg)}", parse_mode='HTML')
+        await event.edit(result_msg)
 
     except Exception as e:
-        await event.edit(f"⚠️ Критическая ошибка: {html.escape(str(e))}", parse_mode='HTML')
+        await event.edit(f"❌ Ошибка перевода: {str(e)}")
 
 class DeferredMessage:
     def __init__(self, client):
@@ -559,7 +522,7 @@ def register_event_handlers(client, prefix=None):
         (rf'^{escaped_prefix}ping$', handle_ping),
         (rf'^{escaped_prefix}loadmod$', handle_loadmod),
         (rf'^{escaped_prefix}unloadmod (\w+)$', handle_unloadmod),
-        (rf'^{escaped_prefix}tr (\w{{2}})$', translate_handler),
+        (rf'^{escaped_prefix}tr(?:\s+([a-zA-Z]{2})(?:\s+([a-zA-Z]{2}))?)?$', translate_handler),  # Обновленный обработчик
         (rf'^{escaped_prefix}calc (.+)$', calc_handler),
         (rf'^{escaped_prefix}deferral (\d+) (\d+) (.+)$', deferred.handler),
         (rf'^{escaped_prefix}update$', update_handler),
@@ -572,7 +535,7 @@ def register_event_handlers(client, prefix=None):
             handler, 
             events.NewMessage(pattern=pattern, outgoing=True)
         )
-
+        
 async def run_bot(token):
     """Основная функция с восстановлением модулей"""
     print("🚀 Инициализация бота...")
