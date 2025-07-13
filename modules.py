@@ -325,59 +325,77 @@ async def translate_handler(event):
         received_messages_count += 1
         active_users.add(event.sender_id)
 
-        if not event.is_reply:
-            await event.edit("❗ Ответьте на сообщение для перевода")
-            return
-
-        # Получаем аргументы
+        # Получаем аргументы команды
         args = event.pattern_match.groups()
-        dest_lang = args[0] if args[0] else None
-        src_lang = args[1] if len(args) > 1 and args[1] else None
+        lang1 = args[0] if args[0] else None
+        lang2 = args[1] if args[1] else None
 
-        if not dest_lang:
+        # Проверяем, является ли сообщение ответом
+        if not event.is_reply:
             help_msg = (
-                "📚 Использование перевода:\n"
+                "📚 Использование перевода:\n\n"
                 f"{get_prefix()}tr <язык> - перевод на указанный язык\n"
                 f"{get_prefix()}tr <исходный> <целевой> - перевод между языками\n"
-                f"Пример: {get_prefix()}tr en - перевод на английский"
+                f"Пример:\n"
+                f"{get_prefix()}tr en - перевод на английский\n"
+                f"{get_prefix()}tr ru en - перевод с русского на английский"
             )
             await event.edit(help_msg)
             return
 
-        # Получаем текст для перевода
+        # Получаем сообщение для перевода
         replied_msg = await event.get_reply_message()
         text_to_translate = replied_msg.text
 
         if not text_to_translate:
-            await event.edit("❌ Нет текста для перевода")
+            await event.edit("❌ Сообщение не содержит текста для перевода")
             return
 
-        # Инициализация переводчика
-        translator = Translator()
+        # Определяем языки перевода
+        if lang1 and lang2:  # формат: .tr ru en
+            src_lang = lang1
+            dest_lang = lang2
+        elif lang1:  # формат: .tr en
+            src_lang = 'auto'
+            dest_lang = lang1
+        else:  # формат: .tr
+            await event.edit("❌ Укажите язык перевода")
+            return
 
         # Выполняем перевод
+        translator = Translator()
         loop = asyncio.get_event_loop()
-        translate_func = partial(
-            translator.translate,
-            text_to_translate,
-            src=src_lang if src_lang else None,
-            dest=dest_lang
-        )
-        translation = await loop.run_in_executor(None, translate_func)
-
-        # Форматируем результат
-        result_msg = (
-            f"🌐 Перевод ({translation.src} → {dest_lang}):\n\n"
-            f"{translation.text}\n\n"
-        )
         
-        if translation.pronunciation:
-            result_msg += f"🔊 Произношение: {translation.pronunciation}"
+        try:
+            # Запускаем синхронный код в отдельном потоке
+            translation = await loop.run_in_executor(
+                None,
+                lambda: translator.translate(
+                    text_to_translate,
+                    src=src_lang,
+                    dest=dest_lang
+                )
+            )
 
-        await event.edit(result_msg)
+            # Форматируем результат
+            result_msg = (
+                f"🌐 Перевод ({translation.src} → {dest_lang}):\n\n"
+                f"{translation.text}\n"
+            )
+            
+            if translation.pronunciation:
+                result_msg += f"\n🔊 Произношение: {translation.pronunciation}"
+
+            await event.edit(result_msg)
+
+        except ValueError as e:
+            await event.edit(f"❌ Ошибка: {str(e)}")
+        except Exception as e:
+            await event.edit(f"❌ Неизвестная ошибка: {str(e)}")
 
     except Exception as e:
-        await event.edit(f"❌ Ошибка перевода: {str(e)}")
+        print(f"Ошибка в translate_handler: {str(e)}")
+        await event.edit("❌ Произошла ошибка при обработке команды")
 
 class DeferredMessage:
     def __init__(self, client):
@@ -522,7 +540,7 @@ def register_event_handlers(client, prefix=None):
         (rf'^{escaped_prefix}ping$', handle_ping),
         (rf'^{escaped_prefix}loadmod$', handle_loadmod),
         (rf'^{escaped_prefix}unloadmod (\w+)$', handle_unloadmod),
-        (rf'^{escaped_prefix}tr(?:\s+([a-zA-Z]{2})(?:\s+([a-zA-Z]{2}))?)?$', translate_handler),  # Обновленный обработчик
+        (rf'^{escaped_prefix}tr(?:\s+([a-z]+))?(?:\s+([a-z]+))?$', translate_handler), 
         (rf'^{escaped_prefix}calc (.+)$', calc_handler),
         (rf'^{escaped_prefix}deferral (\d+) (\d+) (.+)$', deferred.handler),
         (rf'^{escaped_prefix}update$', update_handler),
