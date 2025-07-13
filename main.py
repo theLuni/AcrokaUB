@@ -69,7 +69,7 @@ class BotManager:
         import random
         import string
         chars = string.ascii_lowercase + string.digits
-        rand_part = ''.join(random.choice(chars) for _ in range(6))
+        rand_part = ''.join(random.choice(chars) for _ in range(6)
         return f'acroka_{rand_part}_bot'
 
     async def set_bot_photo(self, username):
@@ -171,13 +171,9 @@ class BotManager:
                     print("❌ Недействительный токен бота")
                     return
 
-            # Инициализация модульной системы
-            from modules import ModuleManager
-            manager = ModuleManager(self.client)
-            await manager.load_all_modules()
-
-            print("🟢 Бот запущен и готов к работе")
-            await self.client.run_until_disconnected()
+            # Запуск modules.py с передачей клиента
+            from modules import main as modules_main
+            await modules_main(self.client)
 
         except Exception as e:
             print(f"🛑 Критическая ошибка: {e}")
