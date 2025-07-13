@@ -175,66 +175,100 @@ async def handle_ping(event):
     except Exception as e:
         await event.edit(f"❌ Ошибка: {str(e)}")
 
-async def handle_loadmod(event):
-    """Обработчик загрузки модуля с очисткой и полной обработкой ошибок"""
+async def load_module(module_name, client):
+    """Загрузка и инициализация модуля"""
     try:
-        # Проверка прав
+        if module_name in loaded_modules:
+            print(f"🔹 Модуль {module_name} уже загружен")
+            return None
+            
+        module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
+        print(f"🔹 Загрузка модуля: {module_name}")
+        
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+        
+        if hasattr(module, 'on_load'):
+            print(f"🔹 Инициализация {module_name}")
+            await module.on_load(client, get_prefix())
+        
+        loaded_modules.append(module_name)
+        print(f"✅ Модуль {module_name} успешно загружен")
+        return module
+        
+    except FileNotFoundError:
+        print(f"❌ Файл модуля {module_name} не найден")
+        return None
+    except SyntaxError as se:
+        print(f"❌ Синтаксическая ошибка в модуле {module_name}: {str(se)}")
+        return None
+    except Exception as e:
+        print(f"❌ Неизвестная ошибка в модуле {module_name}: {str(e)}")
+        return None
+
+async def handle_loadmod(event):
+    """Обработчик команды загрузки модуля"""
+    try:
         if not await is_owner(event):
             await event.delete()
             return
-
-        # Проверка формата сообщения
+    
         if not event.is_reply:
-            await event.edit("❌ Ответьте на сообщение с файлом .py")
+            response = await event.edit("❌ Ответьте на сообщение с файлом .py")
             await asyncio.sleep(3)
-            await event.delete()
+            await response.delete()
             return
 
         reply = await event.get_reply_message()
         
-        # Проверка типа медиа
-        if not reply or not reply.media or not reply.file.ext == '.py':
-            await event.edit("❌ Файл должен быть с расширением .py")
+        if not reply.media or not reply.file.name.endswith('.py'):
+            response = await event.edit("❌ Файл должен быть с расширением .py")
             await asyncio.sleep(3)
-            await event.delete()
+            await response.delete()
             return
 
-        # Скачивание файла
         try:
+            # Скачиваем файл модуля
             file = await reply.download_media(MODS_DIRECTORY)
             module_name = os.path.splitext(os.path.basename(file))[0]
             
-            # Перезагрузка модуля
-            if module_name in loaded_modules:
-                try:
-                    # Выгрузка старой версии
-                    del sys.modules[module_name]
-                    loaded_modules.remove(module_name)
-                    print(f"♻️ Перезагрузка модуля {module_name}")
-                except Exception as unload_error:
-                    print(f"⚠️ Ошибка выгрузки модуля: {unload_error}")
-
-            # Загрузка нового модуля
-            result = await load_module(module_name, event.client)
+            # Проверяем синтаксис перед загрузкой
+            with open(file, 'r', encoding='utf-8') as f:
+                compile(f.read(), file, 'exec')
             
-            if result:
+            # Перезагружаем модуль если он уже был загружен
+            if module_name in loaded_modules:
+                print(f"♻️ Перезагрузка модуля {module_name}")
+                if module_name in sys.modules:
+                    del sys.modules[module_name]
+                loaded_modules.remove(module_name)
+            
+            # Загружаем модуль
+            if await load_module(module_name, event.client):
                 response = await event.edit(f"✅ Модуль '{module_name}' успешно загружен!")
-                await asyncio.sleep(3)
-                await response.delete()
             else:
                 response = await event.edit(f"❌ Не удалось загрузить модуль '{module_name}'")
-                await asyncio.sleep(3)
-                await response.delete()
-                
-        except Exception as download_error:
-            await event.edit(f"❌ Ошибка загрузки файла: {str(download_error)}")
+            
             await asyncio.sleep(3)
-            await event.delete()
-
+            await response.delete()
+            
+        except SyntaxError as se:
+            response = await event.edit(f"❌ Ошибка синтаксиса: {str(se)}")
+            await asyncio.sleep(5)
+            await response.delete()
+            if os.path.exists(file):
+                os.remove(file)
+                
+        except Exception as e:
+            response = await event.edit(f"❌ Ошибка загрузки: {str(e)}")
+            await asyncio.sleep(3)
+            await response.delete()
+            
     except Exception as e:
         print(f"💥 Критическая ошибка в handle_loadmod: {str(e)}")
         await event.delete()
-
 
 async def handle_unloadmod(event):
     if not await is_owner(event):
