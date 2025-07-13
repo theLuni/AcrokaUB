@@ -38,16 +38,19 @@ async def is_owner(event):
     return event.sender_id == me.id
 
 async def load_all_modules(client):
-    """Загрузка модулей с защитой от дублирования"""
+    """Загрузка всех модулей с обработкой ошибок"""
     if not os.path.exists(MODS_DIRECTORY):
         os.makedirs(MODS_DIRECTORY, exist_ok=True)
         return
 
-    print(f"🔍 Сканирование {MODS_DIRECTORY}")
+    print(f"🔍 Сканирование {MODS_DIRECTORY} на модули...")
     for filename in os.listdir(MODS_DIRECTORY):
         if filename.endswith('.py') and not filename.startswith('_'):
             module_name = filename[:-3]
-            await load_module(module_name, client)
+            try:
+                await load_module(module_name, client)
+            except Exception as e:
+                print(f"❌ Не удалось загрузить модуль {module_name}: {str(e)}")
             
 def get_module_info(module_name):
     try:
@@ -87,12 +90,20 @@ def get_prefix():
     return DEFAULT_PREFIX
 
 async def restart_bot(event=None):
-    """Функция для перезапуска бота"""
+    """Улучшенный перезапуск с сохранением состояния"""
     if event:
-        await event.edit("🔄 Юзербот Акрока перезагружается, пожалуйста подождите...")
-    print("🔄 Перезапуск юзербота...")
-    os.execv(sys.executable, RESTART_CMD)
-
+        await event.edit("🔄 Перезагрузка юзербота...")
+    
+    print("🔄 Перезапуск системы...")
+    try:
+        # Сохраняем список загруженных модулей
+        with open('.loaded_mods', 'w') as f:
+            f.write('\n'.join(loaded_modules))
+        
+        os.execv(sys.executable, RESTART_CMD)
+    except Exception as e:
+        print(f"❌ Ошибка при перезапуске: {str(e)}")
+        
 async def handle_help(event):
     if not await is_owner(event):
         return
@@ -176,20 +187,24 @@ async def handle_ping(event):
         await event.edit(f"❌ Ошибка: {str(e)}")
 
 async def load_module(module_name, client):
-    """Загрузка и инициализация модуля"""
+    """Загрузка и инициализация модуля с улучшенной обработкой"""
     try:
-        if module_name in loaded_modules:
-            print(f"🔹 Модуль {module_name} уже загружен")
-            return None
-            
         module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
         print(f"🔹 Загрузка модуля: {module_name}")
         
+        # Удаляем старую версию модуля если он уже загружен
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+        if module_name in loaded_modules:
+            loaded_modules.remove(module_name)
+        
+        # Загружаем модуль
         spec = importlib.util.spec_from_file_location(module_name, module_path)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
         
+        # Инициализируем модуль
         if hasattr(module, 'on_load'):
             print(f"🔹 Инициализация {module_name}")
             await module.on_load(client, get_prefix())
@@ -198,15 +213,10 @@ async def load_module(module_name, client):
         print(f"✅ Модуль {module_name} успешно загружен")
         return module
         
-    except FileNotFoundError:
-        print(f"❌ Файл модуля {module_name} не найден")
-        return None
-    except SyntaxError as se:
-        print(f"❌ Синтаксическая ошибка в модуле {module_name}: {str(se)}")
-        return None
     except Exception as e:
-        print(f"❌ Неизвестная ошибка в модуле {module_name}: {str(e)}")
+        print(f"❌ Ошибка загрузки модуля {module_name}: {str(e)}")
         return None
+        
 
 async def handle_loadmod(event):
     """Обработчик команды загрузки модуля"""
@@ -271,19 +281,36 @@ async def handle_loadmod(event):
         await event.delete()
 
 async def handle_unloadmod(event):
+    """Обработчик удаления модуля с полной выгрузкой"""
     if not await is_owner(event):
         return
     
     module_name = event.pattern_match.group(1)
     module_path = os.path.join(MODS_DIRECTORY, f"{module_name}.py")
     
-    if os.path.exists(module_path):
-        os.remove(module_path)
+    if not os.path.exists(module_path):
+        await event.edit(f"❌ Модуль '{module_name}' не найден")
+        return
+    
+    try:
+        # Полная выгрузка модуля
+        if module_name in sys.modules:
+            # Удаляем обработчики событий если они есть
+            if hasattr(sys.modules[module_name], 'event_handlers'):
+                for handler in sys.modules[module_name].event_handlers:
+                    event.client.remove_event_handler(handler)
+            del sys.modules[module_name]
+        
+        # Удаляем из списка загруженных
         if module_name in loaded_modules:
             loaded_modules.remove(module_name)
-        await event.edit(f"✅ Модуль '{module_name}' удалён")
-    else:
-        await event.edit(f"❌ Модуль '{module_name}' не найден")
+        
+        # Удаляем файл
+        os.remove(module_path)
+        
+        await event.edit(f"✅ Модуль '{module_name}' полностью выгружен и удалён")
+    except Exception as e:
+        await event.edit(f"❌ Ошибка при удалении модуля: {str(e)}")
 
 async def translate_handler(event):
     if not await is_owner(event):
@@ -466,11 +493,18 @@ def register_event_handlers(client, prefix=None):
         )
 
 async def run_bot(token):
-    """Основная функция с защитой от дублирования"""
+    """Основная функция с восстановлением модулей"""
     print("🚀 Инициализация бота...")
     
     try:
-        # Инициализация клиента
+        # Восстановление загруженных модулей
+        if os.path.exists('.loaded_mods'):
+            with open('.loaded_mods', 'r') as f:
+                prev_loaded = f.read().splitlines()
+            os.remove('.loaded_mods')
+        else:
+            prev_loaded = []
+        
         client = TelegramClient(
             session=f'acroka_session_{API_ID}',
             api_id=API_ID,
@@ -480,13 +514,19 @@ async def run_bot(token):
         await client.start(bot_token=token)
         print("✅ Клиент авторизован")
 
-        # Очистка загруженных модулей перед загрузкой
+        # Загрузка модулей
         loaded_modules.clear()
         await load_all_modules(client)
         
-        # Регистрация обработчиков
-        register_event_handlers(client)
+        # Восстановление ранее загруженных модулей
+        for module_name in prev_loaded:
+            if module_name not in loaded_modules:
+                try:
+                    await load_module(module_name, client)
+                except Exception as e:
+                    print(f"❌ Не удалось восстановить модуль {module_name}: {str(e)}")
         
+        register_event_handlers(client)
         print("🟢 Бот готов к работе")
         await client.run_until_disconnected()
         
@@ -495,7 +535,6 @@ async def run_bot(token):
     finally:
         if 'client' in locals():
             await client.disconnect()
-            
 
 def generate_username():
     random_part = ''.join(random.choices(string.ascii_lowercase + string.digits, k=5))
