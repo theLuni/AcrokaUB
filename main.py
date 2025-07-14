@@ -213,73 +213,105 @@ class BotManager:
             return False
 
     async def run(self) -> None:
-        """Основной цикл работы бота"""
-        try:
-            # Подключаемся к Telegram
-            await self.client.start()
-            me = await self.client.get_me()
-            print(f"🔑 Авторизован как: {me.first_name} (id: {me.id})")
-
-            # Проверяем и загружаем токен бота
-            if not self.BOT_TOKEN_FILE.exists() or self.BOT_TOKEN_FILE.stat().st_size == 0:
-                choice = await self.async_input("Файл токена пуст. Загрузить существующего бота? (да/нет): ")
-                choice = choice.strip().lower()
-                
-                if choice in ('y', 'yes', 'да', 'д'):
-                    username = await self.async_input("Введите имя бота (без @): ")
-                    username = username.strip()
-                    if not username:
-                        print("🛑 Имя бота не может быть пустым")
-                        return
-                        
-                    result = await self.load_existing_bot(username)
-                    if not result:
-                        print("🛑 Невозможно продолжить без токена бота")
-                        return
-                    username, token = result
-                else:
-                    result = await self.create_new_bot()
-                    if not result:
-                        print("🛑 Невозможно продолжить без токена бота")
-                        return
-                    username, user_id, token = result
-            else:
+    """Основной цикл работы бота"""
+    try:
+        # Подключаемся к Telegram с обработкой авторизации
+        if not await self.client.is_user_authorized():
+            print("\n🔐 Требуется авторизация в Telegram")
+            
+            while True:
                 try:
-                    content = self.BOT_TOKEN_FILE.read_text().strip()
-                    if content.count(':') >= 2:
-                        parts = content.split(':')
-                        username = parts[0]
-                        user_id = parts[1]
-                        token = ':'.join(parts[2:])
-                    else:
-                        print("❌ Неверный формат файла токена")
-                        return
-
-                    if not await self.check_bot_token(token):
-                        print("❌ Недействительный токен бота")
-                        return
+                    phone = await self.async_input("Введите номер телефона (в формате +7XXXXXXXXXX): ")
+                    if not phone.startswith('+'):
+                        print("❌ Номер должен начинаться с '+' (например, +79123456789)")
+                        continue
+                        
+                    await self.client.send_code_request(phone)
+                    break
                 except Exception as e:
-                    print(f"❌ Ошибка чтения файла токена: {e}")
+                    print(f"❌ Ошибка при запросе кода: {e}")
+
+            while True:
+                try:
+                    code = await self.async_input("Введите код из SMS или Telegram: ")
+                    try:
+                        await self.client.sign_in(phone=phone, code=code)
+                        break
+                    except errors.SessionPasswordNeededError:
+                        password = await self.async_input("Введите пароль двухфакторной аутентификации: ")
+                        await self.client.sign_in(password=password)
+                        break
+                except errors.PhoneCodeInvalidError:
+                    print("❌ Неверный код, попробуйте снова")
+                except Exception as e:
+                    print(f"❌ Ошибка авторизации: {e}")
                     return
 
-            # Запуск модулей
+        me = await self.client.get_me()
+        print(f"\n✅ Авторизован как: {me.first_name} (id: {me.id})")
+
+        # Проверяем и загружаем токен бота
+        if not self.BOT_TOKEN_FILE.exists() or self.BOT_TOKEN_FILE.stat().st_size == 0:
+            print("\nℹ️ Файл токена бота не найден или пуст")
+            choice = await self.async_input("Создать нового бота (1) или загрузить существующего (2)? [1/2]: ")
+            
+            if choice.strip() == '2':
+                username = await self.async_input("Введите @username бота (без @): ").strip()
+                if not username:
+                    print("❌ Имя бота не может быть пустым")
+                    return
+                    
+                result = await self.load_existing_bot(username)
+                if not result:
+                    print("❌ Не удалось загрузить бота")
+                    return
+                username, token = result
+                print(f"✅ Бот @{username} успешно загружен!")
+            else:
+                result = await self.create_new_bot()
+                if not result:
+                    print("❌ Не удалось создать бота")
+                    return
+                username, user_id, token = result
+        else:
             try:
-                from modules import main as modules_main
-                await modules_main(self.client)
-            except ImportError:
-                print("❌ Модули не найдены")
+                content = self.BOT_TOKEN_FILE.read_text().strip()
+                if content.count(':') >= 2:
+                    parts = content.split(':')
+                    username = parts[0]
+                    user_id = parts[1]
+                    token = ':'.join(parts[2:])
+                    
+                    if not await self.check_bot_token(token):
+                        print("❌ Токен бота недействителен")
+                        return
+                        
+                    print(f"✅ Найден бот @{username} (ID: {user_id})")
+                else:
+                    print("❌ Неверный формат файла токена")
+                    return
             except Exception as e:
-                print(f"❌ Ошибка в модулях: {e}")
+                print(f"❌ Ошибка чтения файла токена: {e}")
+                return
 
-        except KeyboardInterrupt:
-            print("\n🛑 Бот остановлен пользователем")
+        # Запуск модулей
+        try:
+            from modules import main as modules_main
+            print("\n🚀 Запуск модулей бота...")
+            await modules_main(self.client)
+        except ImportError as e:
+            print(f"❌ Ошибка импорта модулей: {e}")
         except Exception as e:
-            print(f"🛑 Критическая ошибка: {str(e)}")
-        finally:
-            if self.client.is_connected():
-                await self.client.disconnect()
-                print("🔌 Отключено от Telegram")
+            print(f"❌ Ошибка в модулях: {e}")
 
+    except KeyboardInterrupt:
+        print("\n🛑 Бот остановлен пользователем")
+    except Exception as e:
+        print(f"\n🛑 Критическая ошибка: {str(e)}")
+    finally:
+        if self.client.is_connected():
+            await self.client.disconnect()
+            print("🔌 Отключено от Telegram")
 
 if __name__ == '__main__':
     try:
