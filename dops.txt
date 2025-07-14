@@ -5,3 +5,4 @@ langdetect==1.0.9
 aiohttp==3.12.13
 googletrans==4.0.0rc1
 psutil==7.0.0
+pytz==2025.2
