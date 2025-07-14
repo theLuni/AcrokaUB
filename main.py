@@ -30,6 +30,11 @@ class BotManager:
         except Exception as e:
             raise RuntimeError(f"Ошибка инициализации Telegram клиента: {e}")
 
+    async def async_input(self, prompt: str = "") -> str:
+        """Асинхронная замена для input()"""
+        print(prompt, end="", flush=True)
+        return (await asyncio.get_event_loop().run_in_executor(None, lambda: input())).strip()
+
     async def sleep(self, delay: float = 1.0) -> None:
         """Асинхронная задержка с обработкой FloodWait"""
         try:
@@ -217,10 +222,12 @@ class BotManager:
 
             # Проверяем и загружаем токен бота
             if not self.BOT_TOKEN_FILE.exists() or self.BOT_TOKEN_FILE.stat().st_size == 0:
-                choice = input("Файл токена пуст. Загрузить существующего бота? (да/нет): ").strip().lower()
+                choice = await self.async_input("Файл токена пуст. Загрузить существующего бота? (да/нет): ")
+                choice = choice.strip().lower()
                 
                 if choice in ('y', 'yes', 'да', 'д'):
-                    username = input("Введите имя бота (без @): ").strip()
+                    username = await self.async_input("Введите имя бота (без @): ")
+                    username = username.strip()
                     if not username:
                         print("🛑 Имя бота не может быть пустым")
                         return
