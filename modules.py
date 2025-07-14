@@ -424,89 +424,97 @@ class CoreCommands:
         latency = (datetime.now() - start).microseconds / 1000
         await msg.edit(f"🏓 Pong! | {latency}ms")
 
-    async def handle_update(self, event: Message):
-        """Обновление бота из GitHub"""
+async def handle_update(self, event: Message):
+        """Обновление бота с сохранением папки source"""
         if not await self.is_owner(event):
             return
-            
+
         try:
-            msg = await event.edit("🔄 <b>Проверка обновлений...</b>", parse_mode='html')
-            
-            if not os.path.exists('.git'):
-                # Если нет .git, клонируем репозиторий заново
-                await msg.edit("🔄 <b>Инициализация репозитория...</b>", parse_mode='html')
-                commands = [
-                    'git init',
-                    f'git remote add origin {self.repo_url}',
-                    'git fetch --all',
-                    'git reset --hard origin/main'
-                ]
-            else:
-                # Обычное обновление
-                commands = [
-                    'git fetch --all',
-                    'git reset --hard origin/main'
-                ]
-            
-            # Получаем текущую версию перед обновлением
+            msg = await event.edit("🔄 <b>Начало безопасного обновления...</b>", parse_mode='html')
+
+            # 1. Создаем временную папку для обновления
+            temp_dir = "temp_update"
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            os.makedirs(temp_dir)
+
+            # 2. Клонируем репозиторий во временную папку
+            await msg.edit("🔄 <b>Загрузка обновлений...</b>", parse_mode='html')
+            clone_cmd = f"git clone {self.repo_url} {temp_dir}"
             process = await asyncio.create_subprocess_shell(
-                'git describe --tags || echo "unknown"',
+                clone_cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, _ = await process.communicate()
-            current_version = stdout.decode().strip()
+            await process.communicate()
+
+            if process.returncode != 0:
+                shutil.rmtree(temp_dir)
+                return await msg.edit("❌ <b>Ошибка при загрузке обновлений</b>", parse_mode='html')
+
+            # 3. Копируем только нужные файлы, исключая папку source
+            await msg.edit("🔄 <b>Применение обновлений...</b>", parse_mode='html')
+            excluded = {'source', '.git', 'pycache', temp_dir}
             
-            # Выполняем команды обновления
-            for cmd in commands:
+            for item in os.listdir(temp_dir):
+                if item not in excluded:
+                    src_path = os.path.join(temp_dir, item)
+                    dest_path = os.path.join('.', item)
+                    
+                    if os.path.exists(dest_path):
+                        if os.path.isdir(dest_path):
+                            shutil.rmtree(dest_path)
+                        else:
+                            os.remove(dest_path)
+                    
+                    if os.path.isdir(src_path):
+                        shutil.copytree(src_path, dest_path)
+                    else:
+                        shutil.copy2(src_path, dest_path)
+
+            # 4. Получаем версию обновления
+            version_file = os.path.join(temp_dir, 'version.txt')
+            new_version = "unknown"
+            if os.path.exists(version_file):
+                with open(version_file, 'r') as f:
+                    new_version = f.read().strip()
+
+            # 5. Очистка временных файлов
+            shutil.rmtree(temp_dir)
+
+            # 6. Обновление зависимостей
+            await msg.edit("🔄 <b>Обновление зависимостей...</b>", parse_mode='html')
+            if os.path.exists('requirements.txt'):
                 process = await asyncio.create_subprocess_shell(
-                    cmd,
+                    f"{sys.executable} -m pip install -r requirements.txt --upgrade",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
-                stdout, stderr = await process.communicate()
-                if process.returncode != 0:
-                    error_msg = stderr.decode().strip()
-                    return await msg.edit(
-                        f"❌ <b>Ошибка при выполнении:</b> <code>{cmd}</code>\n\n"
-                        f"<code>{error_msg}</code>",
-                        parse_mode='html'
-                    )
-            
-            # Получаем новую версию после обновления
-            process = await asyncio.create_subprocess_shell(
-                'git describe --tags || echo "unknown"',
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await process.communicate()
-            new_version = stdout.decode().strip()
-            
-            if current_version == new_version and os.path.exists('.git'):
-                return await msg.edit(
-                    "✅ <b>У вас уже последняя версия!</b>\n"
-                    f"<b>Версия:</b> <code>{current_version}</code>",
-                    parse_mode='html'
-                )
-            
+                await process.communicate()
+
             await msg.edit(
                 f"🎉 <b>Бот успешно обновлен!</b>\n\n"
-                f"<b>Было:</b> <code>{current_version}</code>\n"
-                f"<b>Стало:</b> <code>{new_version}</code>\n\n"
+                f"<b>Новая версия:</b> <code>{new_version}</code>\n\n"
+                "✅ <b>Папка source сохранена</b>\n"
                 "🔄 <b>Перезапуск через 5 секунд...</b>",
                 parse_mode='html'
             )
-            
+
             await asyncio.sleep(5)
             await self.restart_bot()
-            
         except Exception as e:
-            await event.edit(
-                "❌ <b>Ошибка обновления</b>\n\n"
-                f"<code>{str(e)}</code>",
-                parse_mode='html'
+            error_msg = (
+                f"❌ <b>Ошибка обновления</b>\n\n"
+                f"<code>{str(e)}</code>\n\n"
+                "Попробуйте вручную:\n"
+                "1. Скачайте архив с GitHub\n"
+                "2. Скопируйте файлы, кроме папки source\n"
+                "3. Перезапустите бота"
             )
-
+            await event.edit(error_msg, parse_mode='html')
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+                
     async def handle_clean(self, event: Message):
         """Очистка кэша и временных файлов"""
         if not await self.is_owner(event):
