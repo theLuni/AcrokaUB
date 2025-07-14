@@ -1,88 +1,145 @@
 import os
+import sys
+from pathlib import Path
+from typing import Optional, Tuple, Dict
+import json
 
-# Путь к папке source
-SOURCE_FOLDER = 'source'
-if not os.path.exists(SOURCE_FOLDER):
-    os.makedirs(SOURCE_FOLDER)
+class ConfigManager:
+    def __init__(self):
+        self.BASE_DIR = Path(__file__).parent
+        self.CONFIG_DIR = self.BASE_DIR / 'config'
+        self.CONFIG_DIR.mkdir(exist_ok=True)
+        
+        self.CONFIG_FILE = self.CONFIG_DIR / 'settings.json'
+        self.BOT_TOKEN_FILE = self.CONFIG_DIR / 'bot_token.txt'
+        
+        # Загружаем конфигурацию
+        self.settings = self._load_settings()
+        self.API_ID = self.settings.get('api_id')
+        self.API_HASH = self.settings.get('api_hash')
+        self.BOT_TOKEN = self._load_bot_token()
 
-# Файл для хранения токена и информации о пользователе
-TOKEN_FILE = os.path.join(SOURCE_FOLDER, 'token.txt')
+    def _load_settings(self) -> Dict:
+        """Загрузка настроек из JSON файла"""
+        default_settings = {
+            'api_id': '',
+            'api_hash': '',
+            'session_name': 'default_session'
+        }
+        
+        if self.CONFIG_FILE.exists():
+            try:
+                with open(self.CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    loaded = json.load(f)
+                    # Проверяем обязательные поля
+                    if all(k in loaded for k in ['api_id', 'api_hash']):
+                        return loaded
+            except (json.JSONDecodeError, IOError):
+                pass
+        
+        return default_settings
 
-def get_api_credentials():
-    """Функция для получения API ID и API Hash из файла или запрос у пользователя."""
-    
-    # Проверяем, существует ли файл с токеном
-    if os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, 'r') as f:
-            lines = f.read().strip().split('\n')
-            print("Содержимое файла:", lines)  # Для отладки
+    def _save_settings(self):
+        """Сохранение настроек в JSON файл"""
+        try:
+            with open(self.CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, indent=4, ensure_ascii=False)
+        except IOError as e:
+            print(f"⚠️ Ошибка сохранения настроек: {e}")
+
+    def _load_bot_token(self) -> Optional[str]:
+        """Загрузка токена бота из файла"""
+        if not self.BOT_TOKEN_FILE.exists():
+            return None
             
-            # Проверяем, что файл содержит как минимум 2 строки
-            if len(lines) >= 2:
-                api_id = lines[0]
-                api_hash = lines[1]
-                print("✅ Токен успешно загружен из файла.")
-                return api_id, api_hash
+        try:
+            with open(self.BOT_TOKEN_FILE, 'r', encoding='utf-8') as f:
+                token_line = f.read().strip()
+                parts = token_line.split(':')
+                
+                if len(parts) >= 4 and len(parts[3]) >= 30 and parts[3].startswith('AAG'):
+                    return ':'.join(parts[2:])
+        except Exception:
+            return None
+            
+        return None
+
+    def _input_credentials(self):
+        """Красивый ввод учетных данных"""
+        from getpass import getpass
+        
+        print("\n" + "="*40)
+        print("🔐 Настройка авторизации Telegram".center(40))
+        print("="*40 + "\n")
+        
+        print("1. Получить API ID и Hash:")
+        print("   - Перейдите на https://my.telegram.org")
+        print("   - Создайте приложение в разделе 'API development tools'\n")
+        
+        self.settings['api_id'] = input("Введите API ID: ").strip()
+        self.settings['api_hash'] = getpass("Введите API Hash: ").strip()
+        
+        print("\n" + "="*40)
+        print("🚀 Настройки сохранены!".center(40))
+        print("="*40 + "\n")
+        
+        self._save_settings()
+
+    def _menu_interactive(self):
+        """Интерактивное меню настройки"""
+        while True:
+            print("\nМеню настройки авторизации:")
+            print("1. Ввести API ID и Hash вручную")
+            print("2. Загрузить из файла конфигурации")
+            print("3. Проверить текущие настройки")
+            print("4. Выход")
+            
+            choice = input("Выберите действие (1-4): ").strip()
+            
+            if choice == '1':
+                self._input_credentials()
+                return
+            elif choice == '2':
+                if self.CONFIG_FILE.exists():
+                    self.settings = self._load_settings()
+                    print("✅ Настройки загружены из файла")
+                    return
+                print("⚠️ Файл конфигурации не найден")
+            elif choice == '3':
+                self._show_current_settings()
+            elif choice == '4':
+                sys.exit("Настройка отменена")
             else:
-                print("❌ Ошибка: Неверный формат файла с токеном. Ожидалось 2 строки, будет запрошен ввод данных.")
-    
-    # Если файл отсутствует или содержит некорректные данные, запрашиваем у пользователя
-    print("Файл с токеном не найден или имеет некорректный формат.")
-    api_id = input("Введите ваш API ID: ")
-    api_hash = input("Введите ваш API Hash: ")
+                print("⚠️ Неверный выбор, попробуйте снова")
 
-    # Сохраняем полученные данные в файл
-    with open(TOKEN_FILE, 'w') as f:
-        f.write(f"{api_id}\n{api_hash}")
-        print("✅ Токен успешно сохранен в файл.")
-    
-    return api_id, api_hash
+    def _show_current_settings(self):
+        """Показать текущие настройки"""
+        print("\nТекущие настройки:")
+        print(f"API ID: {'установлен' if self.settings.get('api_id') else 'не установлен'}")
+        print(f"API Hash: {'установлен' if self.settings.get('api_hash') else 'не установлен'}")
+        print(f"Токен бота: {'установлен' if self.BOT_TOKEN else 'не установлен'}")
 
-import os
+    def setup(self):
+        """Основной метод настройки"""
+        if not self.settings.get('api_id') or not self.settings.get('api_hash'):
+            self._menu_interactive()
+        
+        # Проверяем, что настройки действительны
+        if not self.settings['api_id'].isdigit() or len(self.settings['api_hash']) < 10:
+            print("\n⚠️ Неверный формат API ID/Hash. Повторите ввод.")
+            self._input_credentials()
+        
+        self.API_ID = self.settings['api_id']
+        self.API_HASH = self.settings['api_hash']
 
-def get_bot_token():
-    """
-    Получает токен бота из файла /source/bottoken.txt в формате:
-    'hasaco_bot:7728200289:7728200289:AAG3NA0ZWgBPKkJjkGYCxZtCjCrX5fEJxj8'
-    
-    Возвращает:
-        str: Токен бота (часть после второго двоеточия) или None, если файл пустой/некорректный
-    
-    Исключения:
-        FileNotFoundError: Если файл не существует
-    """
-    token_file = os.path.join('source', 'bottoken.txt')
-    
-    if not os.path.exists(token_file):
-        raise FileNotFoundError(f"Файл с токеном не найден: {token_file}")
-    
-    with open(token_file, 'r') as f:
-        token_line = f.read().strip()
-    
-    # Если файл пустой - возвращаем None
-    if not token_line:
-        return None
-        
-    try:
-        # Разделяем строку по двоеточиям
-        parts = token_line.split(':')
-        
-        # Проверяем минимальную длину и наличие токена
-        if len(parts) < 4:
-            return None
-            
-        # Проверяем, что последняя часть похожа на токен (длина и начало)
-        token_part = parts[3]
-        if len(token_part) < 30 or not token_part.startswith('AAG'):
-            return None
-            
-        return ':'.join(parts[2:])  # Возвращаем все после второго двоеточия
-        
-    except Exception as e:
-        # Ловим любые ошибки парсинга и возвращаем None
-        return None
-        
-BOT_TOKEN = get_bot_token()
 
-# Вызов функции получения API ID и API Hash
-API_ID, API_HASH = get_api_credentials()
+# Инициализация конфигурации
+config = ConfigManager()
+
+# Если нет настроек - запускаем интерактивную настройку
+if not config.API_ID or not config.API_HASH:
+    config.setup()
+
+API_ID = config.API_ID
+API_HASH = config.API_HASH
+BOT_TOKEN = config.BOT_TOKEN
