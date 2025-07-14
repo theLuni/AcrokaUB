@@ -297,7 +297,7 @@ class CoreCommands:
         prefix = self.manager.prefix
         
         help_msg = [
-            f"✨ <b>Acroka UserBot Help (Session ID: {self.manager.session_id})</b> ✨",
+            f"✨ <b>Acroka UserBot Help (Session ID: {self.manager.session_id})</b> ✨.",
             "",
             "⚙️ <b>Основные команды:</b>",
             f"• <code>{prefix}help</code> - Показать это сообщение",
