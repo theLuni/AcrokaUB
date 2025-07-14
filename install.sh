@@ -108,11 +108,11 @@ setup_storage() {
 
 setup_autostart() {
     echo -e "${YELLOW}[*] Настройка автозапуска...${NC}"
-    AUTOSTART_CMD='cd ~/AcrokaUB && python3 main.py'
+    AUTOSTART_CMD='cd ~/AcrokaUB && ./start.sh'
     
     if ! grep -qF "$AUTOSTART_CMD" ~/.bash_profile; then
         echo "$AUTOSTART_CMD" >> ~/.bash_profile
-        echo -e "${GREEN}[✓] Автозапуск настроен${NC}"
+        echo -e "${GREEN}[✓] Автозапуск через start.sh настроен${NC}"
     else
         echo -e "${CYAN}[i] Автозапуск уже настроен${NC}"
     fi
