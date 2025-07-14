@@ -8,21 +8,6 @@ BLUE='\033[1;34m'
 CYAN='\033[1;36m'
 NC='\033[0m'
 
-# Анимация
-spinner() {
-    local pid=$1
-    local delay=0.1
-    local spinstr='|/-\'
-    while [ "$(ps a | awk '{print $1}' | grep $pid)" ]; do
-        local temp=${spinstr#?}
-        printf " [%c]  " "$spinstr"
-        local spinstr=$temp${spinstr%"$temp"}
-        sleep $delay
-        printf "\b\b\b\b\b\b"
-    done
-    printf "    \b\b\b\b"
-}
-
 show_logo() {
     clear
     echo -e "${BLUE}"
@@ -48,105 +33,99 @@ check_internet() {
 }
 
 install_packages() {
-    echo -e "${YELLOW}[*] Обновление пакетов...${NC}"
-    pkg update -y & spinner $!
-    if [ $? -ne 0 ]; then
-        echo -e "\r${RED}[✗] Ошибка обновления пакетов${NC}"
-        return 1
-    fi
-    echo -e "\r${GREEN}[✓] Пакеты успешно обновлены${NC}"
-
-    echo -e "${YELLOW}[*] Установка зависимостей...${NC}"
-    pkg install -y git python python-pip tmux & spinner $!
-    if [ $? -ne 0 ]; then
-        echo -e "\r${RED}[✗] Ошибка установки зависимостей${NC}"
-        return 1
-    fi
-    echo -e "\r${GREEN}[✓] Зависимости успешно установлены${NC}"
+    echo -e "${YELLOW}[*] Установка пакетов...${NC}"
+    pkg update -y && pkg install -y git python python-pip tmux || {
+        echo -e "${RED}[✗] Ошибка установки пакетов${NC}"
+        exit 1
+    }
+    echo -e "${GREEN}[✓] Пакеты успешно установлены${NC}"
 }
 
 clone_repo() {
     echo -e "${YELLOW}[*] Клонирование репозитория...${NC}"
     if [ -d "AcrokaUB" ]; then
         cd AcrokaUB
-        git pull & spinner $!
-        if [ $? -ne 0 ]; then
-            echo -e "\r${RED}[✗] Ошибка обновления репозитория${NC}"
-            return 1
-        fi
-        echo -e "\r${GREEN}[✓] Репозиторий успешно обновлен${NC}"
-    else
-        git clone https://github.com/theLuni/AcrokaUB.git & spinner $!
-        if [ $? -ne 0 ]; then
-            echo -e "\r${RED}[✗] Ошибка клонирования репозитория${NC}"
-            return 1
-        fi
-        cd AcrokaUB || {
-            echo -e "${RED}[✗] Не удалось перейти в директорию${NC}"
-            return 1
+        git pull || {
+            echo -e "${RED}[✗] Ошибка обновления репозитория${NC}"
+            exit 1
         }
-        echo -e "\r${GREEN}[✓] Репозиторий успешно клонирован${NC}"
+    else
+        git clone https://github.com/theLuni/AcrokaUB.git || {
+            echo -e "${RED}[✗] Ошибка клонирования${NC}"
+            exit 1
+        }
+        cd AcrokaUB || exit 1
     fi
+    echo -e "${GREEN}[✓] Репозиторий готов${NC}"
 }
 
 install_dependencies() {
-    echo -e "${YELLOW}[*] Установка Python-зависимостей...${NC}"
-    pip install -r dops.txt & spinner $!
-    if [ $? -ne 0 ]; then
-        echo -e "\r${RED}[✗] Ошибка установки Python-зависимостей${NC}"
-        return 1
-    fi
-    echo -e "\r${GREEN}[✓] Python-зависимости успешно установлены${NC}"
-}
-
-setup_storage() {
-    echo -e "${YELLOW}[*] Настройка хранилища...${NC}"
-    mkdir -p storage/{sessions,cache,logs} &> /dev/null
-    chmod -R 700 storage &> /dev/null
-    echo -e "${GREEN}[✓] Хранилище настроено${NC}"
+    echo -e "${YELLOW}[*] Установка зависимостей Python...${NC}"
+    pip install -r dops.txt || {
+        echo -e "${RED}[✗] Ошибка установки зависимостей${NC}"
+        exit 1
+    }
+    echo -e "${GREEN}[✓] Зависимости установлены${NC}"
 }
 
 setup_autostart() {
     echo -e "${YELLOW}[*] Настройка автозапуска...${NC}"
-    AUTOSTART_CMD='cd ~/AcrokaUB && ./start.sh'
     
-    if ! grep -qF "$AUTOSTART_CMD" ~/.bash_profile; then
-        echo "$AUTOSTART_CMD" >> ~/.bash_profile
-        echo -e "${GREEN}[✓] Автозапуск через start.sh настроен${NC}"
-    else
-        echo -e "${CYAN}[i] Автозапуск уже настроен${NC}"
+    # Создаем start.sh
+    cat > ~/AcrokaUB/start.sh << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+
+# Цвета
+BLUE='\033[1;34m'
+GREEN='\033[1;32m'
+NC='\033[0m'
+
+clear
+echo -e "${BLUE}"
+cat << "EOF2"
+   █████╗  ██████╗██████╗  ██████╗ ██╗  ██╗ █████╗ 
+  ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██║ ██╔╝██╔══██╗
+  ███████║██║     ██████╔╝██║   ██║█████╔╝ ███████║
+  ██╔══██║██║     ██╔══██╗██║   ██║██╔═██╗ ██╔══██║
+  ██║  ██║╚██████╗██║  ██║╚██████╔╝██║  ██╗██║  ██║
+  ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝
+EOF2
+echo -e "${NC}"
+echo -e "${GREEN}          Acroka UserBot запускается...${NC}"
+echo
+
+cd ~/AcrokaUB
+python3 main.py
+EOF
+
+    chmod +x ~/AcrokaUB/start.sh
+    
+    # Добавляем автозапуск в .bash_profile
+    if ! grep -qF "~/AcrokaUB/start.sh" ~/.bash_profile; then
+        echo "~/AcrokaUB/start.sh" >> ~/.bash_profile
     fi
+    echo -e "${GREEN}[✓] Автозапуск настроен${NC}"
 }
 
 success_message() {
     clear
-    echo -e "${BLUE}"
-    echo "   █████╗  ██████╗██████╗  ██████╗ ██╗  ██╗ █████╗ "
-    echo "  ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██║ ██╔╝██╔══██╗"
-    echo "  ███████║██║     ██████╔╝██║   ██║█████╔╝ ███████║"
-    echo "  ██╔══██║██║     ██╔══██╗██║   ██║██╔═██╗ ██╔══██║"
-    echo "  ██║  ██║╚██████╗██║  ██║╚██████╔╝██║  ██╗██║  ██║"
-    echo "  ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝"
+    echo -e "${GREEN}"
+    echo "Установка завершена успешно!"
     echo -e "${NC}"
-    echo -e "${GREEN}          Установка успешно завершена!${NC}"
-    echo -e "${YELLOW}--------------------------------------------${NC}"
-    echo
-    echo -e "${CYAN}Для запуска бота:${NC}"
-    echo -e "1. Закройте Termux"
-    echo -e "2. Откройте Termux снова"
-    echo -e "3. Бот запустится автоматически"
-    echo
-    read -p "Нажмите Enter, чтобы закрыть Termux..."
+    echo "Для запуска бота:"
+    echo "1. Закройте Termux"
+    echo "2. Откройте Termux снова"
+    echo -e "\nНажмите Enter для выхода..."
+    read
     exit 0
 }
 
 main() {
     show_logo
     check_internet
-    install_packages || exit 1
-    clone_repo || exit 1
-    install_dependencies || exit 1
-    setup_storage
+    install_packages
+    clone_repo
+    install_dependencies
     setup_autostart
     success_message
 }
