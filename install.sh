@@ -29,29 +29,29 @@ check_internet() {
         echo -e "${RED}[✗] Нет интернет-соединения!${NC}"
         exit 1
     fi
-    echo -e "${GREEN}[✓] Интернет-соединение активно${NC}"
+    echo -e "${GREEN}[✓] Интернет подключен${NC}"
 }
 
 install_packages() {
-    echo -e "${YELLOW}[*] Установка пакетов...${NC}"
+    echo -e "${YELLOW}[*] Установка необходимых пакетов...${NC}"
     pkg update -y && pkg install -y git python python-pip tmux || {
-        echo -e "${RED}[✗] Ошибка установки пакетов${NC}"
+        echo -e "${RED}[✗] Ошибка при установке пакетов${NC}"
         exit 1
     }
     echo -e "${GREEN}[✓] Пакеты успешно установлены${NC}"
 }
 
 clone_repo() {
-    echo -e "${YELLOW}[*] Клонирование репозитория...${NC}"
+    echo -e "${YELLOW}[*] Клонирование репозитория AcrokaUB...${NC}"
     if [ -d "AcrokaUB" ]; then
         cd AcrokaUB
         git pull || {
-            echo -e "${RED}[✗] Ошибка обновления репозитория${NC}"
+            echo -e "${RED}[✗] Ошибка при обновлении репозитория${NC}"
             exit 1
         }
     else
         git clone https://github.com/theLuni/AcrokaUB.git || {
-            echo -e "${RED}[✗] Ошибка клонирования${NC}"
+            echo -e "${RED}[✗] Ошибка при клонировании${NC}"
             exit 1
         }
         cd AcrokaUB || exit 1
@@ -60,9 +60,9 @@ clone_repo() {
 }
 
 install_dependencies() {
-    echo -e "${YELLOW}[*] Установка зависимостей Python...${NC}"
+    echo -e "${YELLOW}[*] Установка Python-зависимостей...${NC}"
     pip install -r dops.txt || {
-        echo -e "${RED}[✗] Ошибка установки зависимостей${NC}"
+        echo -e "${RED}[✗] Ошибка при установке зависимостей${NC}"
         exit 1
     }
     echo -e "${GREEN}[✓] Зависимости установлены${NC}"
@@ -83,7 +83,7 @@ NC='\033[0m'
 clear
 echo -e "${BLUE}"
 cat << "EOF2"
-   █████╗  ██████╗██████╗  ██████╗ ██╗  ██╗ █████╗ 
+   █████╗  ██████╗██████╗  ██████╗ ██╗  ██╗ █████╗
   ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██║ ██╔╝██╔══██╗
   ███████║██║     ██████╔╝██║   ██║█████╔╝ ███████║
   ██╔══██║██║     ██╔══██╗██║   ██║██╔═██╗ ██╔══██║
@@ -99,10 +99,10 @@ python3 main.py
 EOF
 
     chmod +x ~/AcrokaUB/start.sh
-    
-    # Добавляем автозапуск в .bash_profile
-    if ! grep -qF "~/AcrokaUB/start.sh" ~/.bash_profile; then
-        echo "~/AcrokaUB/start.sh" >> ~/.bash_profile
+
+    # Добавляем автозапуск
+    if ! grep -q "~/AcrokaUB/start.sh" ~/.bashrc; then
+        echo -e "\n# Запуск AcrokaUB\n~/AcrokaUB/start.sh" >> ~/.bashrc
     fi
     echo -e "${GREEN}[✓] Автозапуск настроен${NC}"
 }
@@ -113,10 +113,10 @@ success_message() {
     echo "Установка завершена успешно!"
     echo -e "${NC}"
     echo "Для запуска бота:"
-    echo "1. Закройте Termux"
-    echo "2. Откройте Termux снова"
+    echo "1. Перезапустите Termux"
+    echo "2. Бот запустится автоматически"
     echo -e "\nНажмите Enter для выхода..."
-    read
+    read -n 1 -s
     exit 0
 }
 
