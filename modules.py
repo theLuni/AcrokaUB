@@ -386,9 +386,6 @@ class CoreCommands:
             ])
         
         info_msg.extend([
-            "🔗 <b>Подключенные сервисы:</b>",
-            *[f"• <b>{service}:</b> {'🟢' if status else '🔴'}" for service, status in self.connected_services.items()],
-            "",
             f"📂 <b>Репозиторий:</b> <code>{self.repo_url}</code>",
             f"📝 <b>Документация:</b> <code>{self.docs_url}</code>"
         ])
@@ -424,7 +421,7 @@ class CoreCommands:
         latency = (datetime.now() - start).microseconds / 1000
         await msg.edit(f"🏓 Pong! | {latency}ms")
 
-    async def update_handler(self, event: Message):
+    async def handle_update(self, event: Message):
         """Обновление юзербота с проверкой обновлений"""
         if not await self.is_owner(event):
             return
