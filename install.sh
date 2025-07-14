@@ -130,4 +130,4 @@ main() {
     success_message
 }
 
-main
+exit
