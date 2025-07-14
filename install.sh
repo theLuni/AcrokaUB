@@ -70,14 +70,17 @@ install() {
 
     # 6. Настройка автозапуска
     echo -e "${YELLOW}[*] Настройка автозапуска...${NC}"
-    mkdir -p ~/.termux/boot
-    cat > ~/.termux/boot/run_acrokadb <<'EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-termux-wake-lock
-cd ~/AcrokaUB
-python3 main.py
-EOF
-    chmod +x ~/.termux/boot/run_acrokadb
+    
+    # Команда для автозапуска
+    AUTOSTART_CMD='clear && cd ~/AcrokaUB && python3 main.py'
+
+    # Проверка, есть ли уже эта команда в ~/.bash_profile
+    if ! grep -qF "$AUTOSTART_CMD" ~/.bash_profile; then
+        echo "$AUTOSTART_CMD" >> ~/.bash_profile
+        echo -e "${GREEN}[✓] Команда автозапуска добавлена в ~/.bash_profile.${NC}"
+    else
+        echo -e "${YELLOW}[i] Команда автозапуска уже добавлена в ~/.bash_profile.${NC}"
+    fi
 
     return 0
 }
@@ -85,7 +88,7 @@ EOF
 main() {
     show_logo
     
-    # Проверка интернета
+    # Проверка интернет-соединения
     echo -e "${YELLOW}[*] Проверка интернет-соединения...${NC}"
     if ! ping -c 1 google.com >/dev/null 2>&1; then
         echo -e "${RED}[✗] Нет интернет-соединения!${NC}"
@@ -95,10 +98,10 @@ main() {
     if install; then
         echo -e "\n${GREEN}[✓] Установка успешно завершена!${NC}"
         echo -e "${BLUE}"
-        echo "Для запуска бота:"
-        echo "1. Закройте и снова откройте Termux"
-        echo "2. Или вручную: cd ~/AcrokaUB && python3 main.py"
-        echo -e "${NC}"
+        echo " Запуск бота..."
+        clear
+        cd ~/AcrokaUB
+        python3 main.py
     else
         echo -e "\n${RED}[✗] Установка не удалась${NC}"
         exit 1
