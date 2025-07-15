@@ -347,8 +347,45 @@ class CoreCommands:
             pass
         return False
                     
+    async def get_module_info(self, module_name: str) -> Dict[str, Any]:
+        """Получение информации о модуле в структурированном виде"""
+        if module_name not in self.manager.modules:
+            return None
+            
+        module_data = self.manager.modules[module_name]
+        module = module_data['module']
+        
+        # Получаем docstring и очищаем его
+        docstring = (module.__doc__ or "Без описания").strip()
+        description = "\n".join(line.strip() for line in docstring.split("\n"))
+        
+        # Получаем версию модуля
+        version = getattr(module, 'version', '1.0')
+        
+        # Получаем команды модуля
+        commands = getattr(module, 'commands', {})
+        formatted_commands = []
+        
+        if isinstance(commands, dict):
+            formatted_commands = [
+                f"{self.manager.prefix}{cmd} - {desc}" 
+                for cmd, desc in commands.items()
+            ]
+        elif isinstance(commands, (list, tuple)):
+            formatted_commands = [f"{self.manager.prefix}{cmd}" for cmd in commands]
+        
+        return {
+            'name': module_name,
+            'description': description,
+            'version': version,
+            'commands': formatted_commands,
+            'path': module_data['path'],
+            'loaded_at': module_data['loaded_at'],
+            'load_count': module_data.get('load_count', 1)
+        }
+
     async def handle_help(self, event: Message) -> None:
-        """Отправляет основное сообщение с помощью."""
+        """Основное сообщение помощи"""
         if not await self.is_owner(event):
             return
             
@@ -387,72 +424,63 @@ class CoreCommands:
             f"• <a href='{self.docs_url}'>Документация</a>"
         ]
         
-        if self.manager.modules:  # Исправлено с modules на modules (если была опечатка)
+        if self.manager.modules:
             help_msg.extend(["", "🔌 <b>Загруженные модули и их команды:</b>"])
-            for mod_name, mod_data in self.manager.modules.items():
-                module = mod_data['module']
-                commands = getattr(module, 'commands', {})
-                
-                if isinstance(commands, dict):
-                    cmd_list = [f"<code>{prefix}{cmd}</code>" for cmd in commands.keys()]
-                elif isinstance(commands, list):
-                    cmd_list = [f"<code>{prefix}{cmd}</code>" for cmd in commands]
-                else:
-                    cmd_list = []
-                    
-                if cmd_list:
-                    help_msg.append(f"• <b>{mod_name}</b>: {', '.join(cmd_list)}")
+            for mod_name in self.manager.modules:
+                module_info = await self.get_module_info(mod_name)
+                if module_info and module_info['commands']:
+                    help_msg.append(
+                        f"• <b>{mod_name}</b>: " +
+                        ", ".join(f"<code>{cmd.split(' - ')[0]}</code>" 
+                                for cmd in module_info['commands'])
+                    )
 
         await event.edit("\n".join(help_msg), parse_mode='html')
 
     async def handle_module_help(self, event: Message) -> None:
-        """Вывод информации о конкретном модуле."""
+        """Детальная информация о модуле"""
         if not await self.is_owner(event):
             return
             
         module_name = event.pattern_match.group(1)
-        
-        if module_name not in self.manager.modules:
+        if not module_name:
+            await event.edit("❌ Укажите название модуля")
+            return
+
+        module_info = await self.get_module_info(module_name)
+        if not module_info:
             await event.edit(f"❌ Модуль <code>{module_name}</code> не найден", parse_mode='html')
             return
             
         try:
-            module_data = self.manager.modules[module_name]
-            module = module_data['module']
-            
-            desc = getattr(module, '__doc__', 'Без описания').strip()
-            version = getattr(module, 'version', '1.0')
-            commands = getattr(module, 'commands', {})
-            
-            desc = desc.replace("Описание:", "").strip()
+            uptime = datetime.now() - module_info['loaded_at']
+            hours = uptime.seconds // 3600
+            minutes = (uptime.seconds % 3600) // 60
             
             info_msg = [
-                f"📦 <b>Модуль {module_name} v{version}</b>",
+                f"📦 <b>Модуль {module_info['name']} v{module_info['version']}</b>",
                 "",
-                f"📝 <b>Описание:</b> {desc}",
+                f"📝 <b>Описание:</b> {module_info['description']}",
                 ""
             ]
             
-            if commands:
+            if module_info['commands']:
                 info_msg.append("⚙️ <b>Доступные команды:</b>")
-                
-                if isinstance(commands, dict):
-                    for cmd, cmd_desc in commands.items():
-                        if cmd_desc:
-                            info_msg.append(f"• <code>{self.manager.prefix}{cmd}</code> - {cmd_desc}")
-                        else:
-                            info_msg.append(f"• <code>{self.manager.prefix}{cmd}</code>")
-                elif isinstance(commands, list):
-                    info_msg.extend([f"• <code>{self.manager.prefix}{cmd}</code>" for cmd in commands])
-                
+                info_msg.extend([f"• <code>{cmd}</code>" for cmd in module_info['commands']])
                 info_msg.append("")
             
-            info_msg.append(f"🕒 <b>Загружен:</b> {(datetime.now() - module_data['loaded_at']).seconds // 60} минут назад")
+            info_msg.extend([
+                f"🕒 <b>Загружен:</b> {hours}ч {minutes}м назад",
+                f"🔄 <b>Перезагрузок:</b> {module_info['load_count']}",
+                f"📂 <b>Файл:</b> <code>{os.path.basename(module_info['path'])}</code>"
+            ])
             
             await event.edit("\n".join(info_msg), parse_mode='html')
             
         except Exception as e:
-            await event.edit(f"❌ Ошибка при получении информации о модуле: {str(e)}")    
+            await event.edit(f"❌ Ошибка при получении информации о модуле: {str(e)}")
+            
+    
     async def handle_logs(self, event: Message):
         """Отправка логов"""
         if not await self.is_owner(event):
@@ -853,53 +881,6 @@ class CoreCommands:
             if os.path.exists(module_path):
                 os.remove(module_path)
 
-    async def handle_getmod(self, event: Message):
-        """Отправить файл модуля в чат"""
-        if not await self.is_owner(event):
-            return
-            
-        module_name = event.pattern_match.group(1)
-        
-        if module_name not in self.manager.modules:
-            await event.edit(
-                "❌ <b>Модуль не найден</b>\n\n"
-                f"Модуль <code>{module_name}</code> не загружен.",
-                parse_mode='html'
-            )
-            return
-            
-        try:
-            module_data = self.manager.modules[module_name]
-            module = module_data['module']
-            
-            desc = getattr(module, '__doc__', 'Без описания').strip()
-            version = getattr(module, 'version', '1.0')
-            commands = getattr(module, 'commands', [])
-            
-            info_msg = [
-                f"📦 <b>Модуль {module_name} v{version}</b>",
-                f"📝 <b>Описание:</b> {desc}",
-                "",
-                "🛠 <b>Команды:</b>",
-                *[f"• <code>{self.manager.prefix}{cmd}</code>" for cmd in commands],
-                "",
-                "⬇️ <i>Файл модуля:</i>"
-            ]
-            
-            await event.delete()
-            await self.manager.client.send_message(
-                event.chat_id,
-                "\n".join(info_msg),
-                parse_mode='html',
-                file=module_data['path']
-            )
-            
-        except Exception as e:
-            await event.edit(
-                "❌ <b>Ошибка получения модуля</b>\n\n"
-                f"<code>{str(e)}</code>",
-                parse_mode='html'
-            )
 
     async def handle_unloadmod(self, event: Message):
         """Полностью удалить модуль"""
