@@ -974,15 +974,20 @@ class CoreCommands:
                 events.NewMessage(pattern=pattern, outgoing=True)
             )
 
-async def check_internet():
+import os
+import subprocess
+import platform
+
+async def check_internet_connection() -> bool:
     """Проверка наличия интернет-соединения."""
     try:
+        # Определяем операционную систему
+        param = '-n' if platform.system().lower() == 'windows' else '-c'
         # Выполняем команду ping на Google DNS
-        output = subprocess.check_output(['ping', '-c', '1', '8.8.8.8'], stderr=subprocess.DEVNULL)
-        print("🌐 [Интернет] Соединение нормально.")
+        output = subprocess.check_output(['ping', param, '1', '8.8.8.8'], stderr=subprocess.DEVNULL)
+        return True
     except subprocess.CalledProcessError:
-        print("⚠️ [Предупреждение] Проблемы с интернет-соединением. Соединение может быть ненадежным.")
-
+        return False
 async def main(client=None):
     """Основная функция запуска юзербота"""
     print("🟢 [Система] Запуск Acroka UserBot...")
