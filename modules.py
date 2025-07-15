@@ -590,7 +590,7 @@ class CoreCommands:
             'owner_name': me.first_name,
             'uptime': str(uptime).split('.')[0],
             'modules_count': len(self.manager.modules),
-            'os_info': get_platform_info(),  # Используем новую функцию
+            'os_info': CoreCommands.get_platform_info(),  # Вызываем статический метод класса
             'python_version': platform.python_version(),
             'telethon_version': telethon.__version__,
             'repo_url': self.repo_url,
