@@ -403,6 +403,25 @@ class CoreCommands:
             pass
         return False
 
+    def get_platform_info() -> str:
+        """Получение информации о платформе с определением Termux/UserLAnd/WSL"""
+        system = platform.system()
+        
+        # Проверка на Termux
+        if 'ANDROID_ROOT' in os.environ:
+            return "Android (Termux)"
+        
+        # Проверка на UserLAnd
+        if os.path.exists('/etc/UserLAnd'):
+            return "UserLAnd"
+        
+        # Проверка на WSL
+        if 'microsoft' in platform.uname().release.lower():
+            return "WSL"
+        
+        # Стандартная информация
+        return system        
+
     async def handle_set(self, event):
         """Универсальная команда для настроек"""
         if not await self.is_owner(event):
@@ -540,24 +559,7 @@ class CoreCommands:
         else:
             await event.edit("❌ Неизвестный тип настройки")
 
-    def get_platform_info() -> str:
-        """Получение информации о платформе с определением Termux/UserLAnd/WSL"""
-        system = platform.system()
-        
-        # Проверка на Termux
-        if 'ANDROID_ROOT' in os.environ:
-            return "Android (Termux)"
-        
-        # Проверка на UserLAnd
-        if os.path.exists('/etc/UserLAnd'):
-            return "UserLAnd"
-        
-        # Проверка на WSL
-        if 'microsoft' in platform.uname().release.lower():
-            return "WSL"
-        
-        # Стандартная информация
-        return system    
+
     
     async def _generate_info_message(self):
         """Генерация сообщения .info с медиа и текстом"""
