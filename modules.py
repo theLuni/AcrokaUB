@@ -549,9 +549,12 @@ class CoreCommands:
 
         try:
             with open(CUSTOM_INFO_FILE, 'r') as f:
-                template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
+                custom_data = json.load(f)
+                template = custom_data.get('template', DEFAULT_INFO_TEMPLATE)
+                media_path = custom_data.get('media_path', None)
         except:
             template = DEFAULT_INFO_TEMPLATE
+            media_path = None
         
         info_data = {
             'version': self.manager.version,
@@ -566,9 +569,10 @@ class CoreCommands:
             'telethon_version': telethon.__version__,
             'repo_url': self.repo_url
         }
+
+        info_text = template.format(**info_data)
+        return info_text, media_path
         
-        return template.format(**info_data)
-    
     async def handle_info(self, event: Message):
         """Обработчик команды .info - показывает информацию о боте"""
         if not await self.is_owner(event):
@@ -608,8 +612,8 @@ class CoreCommands:
                 await event.edit(info_text, parse_mode='html')
                 
         except Exception as e:
-            await event.edit(f"❌ Ошибка при генерации информации: {str(e)}")            
-
+            await event.edit(f"❌ Ошибка при генерации информации: {str(e)}")
+                
         
     async def get_module_info(self, module_name: str) -> Dict[str, Any]:
         """Получение информации о модуле в структурированном виде"""
