@@ -403,11 +403,11 @@ class CoreCommands:
             pass
         return False
 
-    async def handle_set(self, event: Message):
+    async def handle_set(self, event):
         """Универсальная команда для настроек"""
         if not await self.is_owner(event):
             return
-            
+        
         args = event.pattern_match.group(1)
         if not args:
             await event.edit(
@@ -420,10 +420,11 @@ class CoreCommands:
                 parse_mode='html'
             )
             return
-            
-        args = args.split(' ', 1)
-        setting_type = args[0].lower()
-        value = args[1] if len(args) > 1 else None
+        
+        # Разделяем только первый пробел, остальное оставляем как значение
+        parts = args.split(' ', 1)
+        setting_type = parts[0].lower()
+        value = parts[1] if len(parts) > 1 else None
         
         if setting_type == "prefix":
             if not value or len(value) > 3:
@@ -456,9 +457,15 @@ class CoreCommands:
                 return
                 
             try:
-                data = {'template': value}
+                # Получаем полный текст сообщения
+                full_text = event.raw_text
+                # Находим начало шаблона (после ".set info")
+                template_start = full_text.find(".set info") + len(".set info")
+                template_text = full_text[template_start:].strip()
+                
+                data = {'template': template_text}
                 with open(CUSTOM_INFO_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False)
+                    json.dump(data, f, ensure_ascii=False, indent=4)
                     
                 await event.edit("✅ Текст для .info успешно обновлен!")
             except Exception as e:
