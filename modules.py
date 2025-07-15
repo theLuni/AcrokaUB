@@ -5,6 +5,7 @@ import importlib
 import asyncio
 import re
 import shutil
+from bs4 import BeautifulSoup
 import traceback
 import platform
 import telethon
@@ -648,15 +649,11 @@ class CoreCommands:
         try:
             await event.edit("🔍 Поиск модулей...")
             
-            # Получаем список файлов из папки
             repo_url = "https://github.com/theLuni/AcrokaUB-Modules"
-            content_url = f"{repo_url}/contents"  # URL для получения содержимого
-            response = requests.get(content_url)
+            response = requests.get(repo_url)
             response.raise_for_status()  # Вызовет исключение, если статус код не 200
             
-            # Поскольку это обычный HTML, используя BeautifulSoup для парсинга
-            from bs4 import BeautifulSoup
-            
+            # Парсим страницу репозитория
             soup = BeautifulSoup(response.text, 'html.parser')
             links = soup.find_all('a', class_='js-navigation-open link-gray')
             
