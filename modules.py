@@ -425,19 +425,8 @@ class CoreCommands:
             f"• <a href='{self.docs_url}'>Документация</a>"
         ]
         
-        if self.manager.modules:
-            help_msg.extend(["", "🔌 <b>Загруженные модули и их команды:</b>"])
-            for mod_name in self.manager.modules:
-                module_info = await self.get_module_info(mod_name)
-                if module_info and module_info['commands']:
-                    help_msg.append(
-                        f"• <b>{mod_name}</b>: " +
-                        ", ".join(f"<code>{cmd.split(' - ')[0]}</code>" 
-                                for cmd in module_info['commands'])
-                    )
-
         await event.edit("\n".join(help_msg), parse_mode='html')
-
+        
     async def handle_module_help(self, event: Message) -> None:
         """Детальная информация о модуле"""
         if not await self.is_owner(event):
@@ -973,7 +962,7 @@ class CoreCommands:
             )
 
     async def handle_modlist(self, event: Message):
-        """Показать список всех модулей"""
+        """Показать красивый список всех модулей"""
         if not await self.is_owner(event):
             return
             
@@ -981,27 +970,43 @@ class CoreCommands:
             await event.edit("ℹ️ Нет загруженных модулей")
             return
             
+        # Создаем красивый список модулей
         mod_list = [
-            "📦 <b>Загруженные модули:</b>",
-            f"🔹 Всего: {len(self.manager.modules)}",
+            f"📦 <b>Загруженные модули ({len(self.manager.modules)})</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
             ""
         ]
         
         for mod_name, mod_data in self.manager.modules.items():
             module = mod_data['module']
-            desc = getattr(module, '__doc__', 'Без описания').split('\n')[0]
+            desc = (getattr(module, '__doc__', 'Без описания') or 'Без описания').split('\n')[0].strip()
             version = getattr(module, 'version', '1.0')
             uptime = datetime.now() - mod_data['loaded_at']
+            hours = uptime.seconds // 3600
+            minutes = (uptime.seconds % 3600) // 60
             
-            mod_list.append(
-                f"• <b>{mod_name}</b> (v{version})\n"
-                f"  <i>{desc}</i>\n"
-                f"  🕒 Загружен: {uptime.seconds // 3600}ч {(uptime.seconds % 3600) // 60}м назад\n"
-                f"  📂 <code>{os.path.basename(mod_data['path'])}</code>"
-            )
+            mod_list.extend([
+                f"🔹 <b>{mod_name}</b> v{version}",
+                f"   ├ <i>{desc}</i>",
+                f"   ├ 🕒 Загружен: {hours}ч {minutes}м назад",
+                f"   └ 📂 <code>{os.path.basename(mod_data['path'])}</code>",
+                ""
+            ])
         
-        await event.edit("\n".join(mod_list), parse_mode='html')
+        mod_list.append("🚀 Используйте <code>.mhelp [имя]</code> для подробной информации")
+        
+        # Разбиваем сообщение на части, если оно слишком длинное
+        full_message = "\n".join(mod_list)
+        if len(full_message) > 4096:
+            parts = [full_message[i:i+4000] for i in range(0, len(full_message), 4000)]
+            for part in parts:
+                await event.respond(part, parse_mode='html')
+                await asyncio.sleep(0.5)
+            await event.delete()
+        else:
+            await event.edit(full_message, parse_mode='html')
 
+    
     async def handle_translate(self, event: Message):
         """Переводчик"""
         if not await self.is_owner(event):
