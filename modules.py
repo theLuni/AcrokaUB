@@ -403,25 +403,24 @@ class CoreCommands:
             pass
         return False
 
-
     async def handle_set(self, event: Message):
         """Универсальная команда для настроек"""
         if not await self.is_owner(event):
             return
-            
+        
         args = event.pattern_match.group(1)
         if not args:
             await event.edit(
                 "⚙️ <b>Доступные настройки:</b>\n\n"
                 f"<code>{self.manager.prefix}set prefix [новый префикс]</code> - Изменить префикс команд\n"
-                f"<code>{self.manager.prefix}set info [шаблон]</code> - Настроить вывод .info\n"
-                f"<code>{self.manager.prefix}set media [текст]</code> - Установить медиа и текст для .info\n"
-                f"<code>{self.manager.prefix}set reset</code> - Сбросить все настройки\n\n"
+                f"<code>{self.manager.prefix}set info [шаблон]</code> - Настроить текст для .info\n"
+                f"<code>{self.manager.prefix}set media</code> - Установить медиа для .info (ответ на сообщение)\n"
+                f"<code>{self.manager.prefix}set reset [all|prefix|info|media]</code> - Сбросить настройки\n\n"
                 "ℹ️ Для просмотра текущих настроек используйте команду без значения",
                 parse_mode='html'
             )
             return
-            
+        
         args = args.split(' ', 1)
         setting_type = args[0].lower()
         value = args[1] if len(args) > 1 else None
@@ -448,21 +447,28 @@ class CoreCommands:
                     current_template = DEFAULT_INFO_TEMPLATE
                     
                 await event.edit(
-                    f"ℹ️ <b>Текущий шаблон .info:</b>\n\n"
+                    f"ℹ️ <b>Текущий текст для .info:</b>\n\n"
                     f"<code>{current_template}</code>\n\n"
                     f"Доступные переменные: version, session_id, last_update_time, "
                     f"owner_id, owner_name, uptime, modules_count, os_info, python_version, "
-                    f"telethon_version, rep_url",
+                    f"telethon_version, repo_url",
                     parse_mode='html'
                 )
                 return
                 
             try:
-                data = {'template': value}
+                # Загружаем текущие данные (если есть)
+                current_data = {}
+                if os.path.exists(CUSTOM_INFO_FILE):
+                    with open(CUSTOM_INFO_FILE, 'r') as f:
+                        current_data = json.load(f)
+                
+                # Обновляем только шаблон
+                current_data['template'] = value
                 with open(CUSTOM_INFO_FILE, 'w') as f:
-                    json.dump(data, f)
+                    json.dump(current_data, f)
                     
-                await event.edit("✅ Шаблон .info успешно обновлен!")
+                await event.edit("✅ Текст для .info успешно обновлен!")
             except Exception as e:
                 await event.edit(f"❌ Ошибка: {str(e)}")
                 
@@ -477,11 +483,14 @@ class CoreCommands:
                 return
                 
             try:
-                # Сохраняем медиа в папке source
+                current_data = {}
+                if os.path.exists(CUSTOM_INFO_FILE):
+                    with open(CUSTOM_INFO_FILE, 'r') as f:
+                        current_data = json.load(f)
+                
                 media_dir = os.path.join('source', 'media')
                 os.makedirs(media_dir, exist_ok=True)
                 
-                # Удаляем старые медиафайлы
                 for old_file in os.listdir(media_dir):
                     if old_file.startswith('info_media'):
                         os.remove(os.path.join(media_dir, old_file))
@@ -490,58 +499,57 @@ class CoreCommands:
                 media_path = os.path.join(media_dir, f'info_media_{datetime.now().strftime("%Y%m%d%H%M%S")}')
                 media_path = await reply.download_media(file=media_path)
                 
-                # Сохраняем текст в файл настроек
-                data = {
-                    'media_text': value or "",
-                    'media_path': media_path
-                }
+                # Обновляем только путь к медиа
+                current_data['media_path'] = media_path
                 with open(CUSTOM_INFO_FILE, 'w') as f:
-                    json.dump(data, f)
+                    json.dump(current_data, f)
                     
-                await event.edit("✅ Медиа и текст для .info успешно сохранены!")
+                await event.edit("✅ Медиа для .info успешно сохранено!")
             except Exception as e:
                 await event.edit(f"❌ Ошибка: {str(e)}")
-                if os.path.exists(media_path):
+                if 'media_path' in locals() and os.path.exists(media_path):
                     os.remove(media_path)
-                    
+                
         elif setting_type == "reset":
+            reset_type = value.lower() if value else "all"
+            
             try:
-                # Сброс префикса
-                if os.path.exists(PREFIX_FILE):
-                    os.remove(PREFIX_FILE)
-                self.manager.prefix = DEFAULT_PREFIX
-                
-                # Сброс медиа и шаблона
-                if os.path.exists(CUSTOM_INFO_FILE):
-                    # Удаляем сохраненные медиафайлы
-                    try:
+                if reset_type in ("all", "prefix"):
+                    if os.path.exists(PREFIX_FILE):
+                        os.remove(PREFIX_FILE)
+                    self.manager.prefix = DEFAULT_PREFIX
+                    
+                if reset_type in ("all", "info", "media"):
+                    current_data = {}
+                    if os.path.exists(CUSTOM_INFO_FILE):
                         with open(CUSTOM_INFO_FILE, 'r') as f:
-                            data = json.load(f)
-                            if 'media_path' in data and os.path.exists(data['media_path']):
-                                os.remove(data['media_path'])
-                    except:
-                        pass
-                    os.remove(CUSTOM_INFO_FILE)
+                            current_data = json.load(f)
+                    
+                    if reset_type in ("all", "info"):
+                        if 'template' in current_data:
+                            del current_data['template']
+                    
+                    if reset_type in ("all", "media"):
+                        if 'media_path' in current_data:
+                            media_path = current_data['media_path']
+                            if os.path.exists(media_path):
+                                os.remove(media_path)
+                            del current_data['media_path']
+                    
+                    with open(CUSTOM_INFO_FILE, 'w') as f:
+                        json.dump(current_data, f)
                 
-                # Удаляем все медиа из папки
-                media_dir = os.path.join('source', 'media')
-                if os.path.exists(media_dir):
-                    for file in os.listdir(media_dir):
-                        if file.startswith('info_media'):
-                            os.remove(os.path.join(media_dir, file))
-                
-                await event.edit("✅ Все настройки сброшены к значениям по умолчанию!")
+                await event.edit(f"✅ Настройки {reset_type} сброшены к значениям по умолчанию!")
             except Exception as e:
                 await event.edit(f"❌ Ошибка сброса: {str(e)}")
         else:
             await event.edit("❌ Неизвестный тип настройки")
 
     async def _generate_info_message(self):
-        """Генерация сообщения .info с учетом кастомного шаблона"""
+        """Генерация сообщения .info с медиа и текстом"""
         me = await self.manager.client.get_me()
         uptime = datetime.now() - self.manager.start_time
 
-        # Проверяем существование файла и создаем его при необходимости
         if not os.path.exists(CUSTOM_INFO_FILE):
             os.makedirs(os.path.dirname(CUSTOM_INFO_FILE), exist_ok=True)
             with open(CUSTOM_INFO_FILE, 'w') as f:
@@ -552,9 +560,11 @@ class CoreCommands:
                 custom_data = json.load(f)
                 template = custom_data.get('template', DEFAULT_INFO_TEMPLATE)
                 media_path = custom_data.get('media_path', None)
+                media_text = custom_data.get('media_text', "")  # Текст для медиа
         except:
             template = DEFAULT_INFO_TEMPLATE
             media_path = None
+            media_text = ""
         
         info_data = {
             'version': self.manager.version,
@@ -569,9 +579,17 @@ class CoreCommands:
             'telethon_version': telethon.__version__,
             'repo_url': self.repo_url
         }
-
+        
+        # Генерируем текст
         info_text = template.format(**info_data)
-        return info_text, media_path
+        
+        # Если есть медиа, добавляем текст к нему
+        if media_path and os.path.exists(media_path):
+            if media_text:
+                info_text = f"{media_text}\n\n{info_text}"
+            return info_text, media_path
+        
+        return info_text, None
         
     async def handle_info(self, event: Message):
         """Обработчик команды .info - показывает информацию о боте"""
