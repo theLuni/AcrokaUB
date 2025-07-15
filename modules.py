@@ -1329,7 +1329,7 @@ class CoreCommands:
             (rf'^{prefix}mfind (.+)$', self.handle_searchmod),
             (rf'^{prefix}dlm (\w+\.py)$', self.handle_downloadmod),
             (rf'^{prefix}dlm (\w+)$', self.handle_downloadmod),
-            (rf'^{prefix}set(?:\s+(.+))?$', self.handle_set),
+            (rf'^{prefix}cfg(?:\s+(.+))?$', self.handle_set),
         ]
 
         for pattern, handler in cmd_handlers:
