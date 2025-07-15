@@ -396,18 +396,20 @@ class CoreCommands:
         if not await self.is_owner(event):
             return
             
-        args = event.pattern_match.group(1).split(' ', 1)
-        if len(args) < 1:
+        args = event.pattern_match.group(1)
+        if not args:
             await event.edit(
                 "⚙️ <b>Доступные настройки:</b>\n\n"
                 f"<code>{self.manager.prefix}set prefix [новый префикс]</code> - Изменить префикс команд\n"
                 f"<code>{self.manager.prefix}set info [шаблон]</code> - Настроить вывод .info\n"
-                f"<code>{self.manager.prefix}set media [текст]</code> - Установить текст для медиа-инфо\n\n"
+                f"<code>{self.manager.prefix}set media [текст]</code> - Установить медиа и текст для .info\n"
+                f"<code>{self.manager.prefix}set reset</code> - Сбросить все настройки\n\n"
                 "ℹ️ Для просмотра текущих настроек используйте команду без значения",
                 parse_mode='html'
             )
             return
             
+        args = args.split(' ', 1)
         setting_type = args[0].lower()
         value = args[1] if len(args) > 1 else None
         
@@ -463,35 +465,155 @@ class CoreCommands:
                 return
                 
             try:
-                media = await reply.download_media(file='temp_download')
-                info_msg = await self._generate_info_message()
+                # Сохраняем медиа в папке source
+                media_dir = os.path.join('source', 'media')
+                os.makedirs(media_dir, exist_ok=True)
                 
-                if reply.photo:
+                # Удаляем старые медиафайлы
+                for old_file in os.listdir(media_dir):
+                    if old_file.startswith('info_media'):
+                        os.remove(os.path.join(media_dir, old_file))
+                
+                # Сохраняем новое медиа
+                media_path = os.path.join(media_dir, f'info_media_{datetime.now().strftime("%Y%m%d%H%M%S")}')
+                media_path = await reply.download_media(file=media_path)
+                
+                # Сохраняем текст в файл настроек
+                data = {
+                    'media_text': value or "",
+                    'media_path': media_path
+                }
+                with open(CUSTOM_INFO_FILE, 'w') as f:
+                    json.dump(data, f)
+                    
+                await event.edit("✅ Медиа и текст для .info успешно сохранены!")
+            except Exception as e:
+                await event.edit(f"❌ Ошибка: {str(e)}")
+                if os.path.exists(media_path):
+                    os.remove(media_path)
+                    
+        elif setting_type == "reset":
+            try:
+                # Сброс префикса
+                if os.path.exists(PREFIX_FILE):
+                    os.remove(PREFIX_FILE)
+                self.manager.prefix = DEFAULT_PREFIX
+                
+                # Сброс медиа и шаблона
+                if os.path.exists(CUSTOM_INFO_FILE):
+                    # Удаляем сохраненные медиафайлы
+                    try:
+                        with open(CUSTOM_INFO_FILE, 'r') as f:
+                            data = json.load(f)
+                            if 'media_path' in data and os.path.exists(data['media_path']):
+                                os.remove(data['media_path'])
+                    except:
+                        pass
+                    os.remove(CUSTOM_INFO_FILE)
+                
+                # Удаляем все медиа из папки
+                media_dir = os.path.join('source', 'media')
+                if os.path.exists(media_dir):
+                    for file in os.listdir(media_dir):
+                        if file.startswith('info_media'):
+                            os.remove(os.path.join(media_dir, file))
+                
+                await event.edit("✅ Все настройки сброшены к значениям по умолчанию!")
+            except Exception as e:
+                await event.edit(f"❌ Ошибка сброса: {str(e)}")
+        else:
+            await event.edit("❌ Неизвестный тип настройки")
+
+    async def _generate_info_message(self):
+        """Генерация сообщения .info с учетом кастомного шаблона и медиа"""
+        me = await self.manager.client.get_me()
+        uptime = datetime.now() - self.manager.start_time
+
+        # Проверяем существование файла и создаем его при необходимости
+        if not os.path.exists(CUSTOM_INFO_FILE):
+            os.makedirs(os.path.dirname(CUSTOM_INFO_FILE), exist_ok=True)
+            with open(CUSTOM_INFO_FILE, 'w') as f:
+                json.dump({'template': DEFAULT_INFO_TEMPLATE}, f)
+
+        try:
+            with open(CUSTOM_INFO_FILE, 'r') as f:
+                data = json.load(f)
+                template = data.get('template', DEFAULT_INFO_TEMPLATE)
+                media_text = data.get('media_text', "")
+                media_path = data.get('media_path', None)
+        except:
+            template = DEFAULT_INFO_TEMPLATE
+            media_text = ""
+            media_path = None
+        
+        sys_info = self.manager.get_system_info()
+        
+        info_data = {
+            'version': self.manager.version,
+            'session_id': self.manager.session_id,
+            'last_update_time': self.manager.last_update_time,
+            'owner_id': me.id,
+            'owner_name': me.first_name,
+            'uptime': str(timedelta(seconds=uptime.seconds)).split('.')[0],
+            'modules_count': len(self.manager.modules),
+            'os_info': f"{platform.system()} {platform.release()}",
+            'python_version': platform.python_version(),
+            'telethon_version': telethon.__version__,
+            'cpu_usage': sys_info.get('cpu', {}).get('usage', 'N/A'),
+            'cpu_cores': sys_info.get('cpu', {}).get('cores', 'N/A'),
+            'ram_percent': sys_info.get('memory', {}).get('percent', 'N/A'),
+            'ram_used': sys_info.get('memory', {}).get('used', 'N/A'),
+            'ram_total': sys_info.get('memory', {}).get('total', 'N/A'),
+            'repo_url': self.repo_url
+        }
+        
+        formatted_text = template.format(**info_data)
+        
+        if media_text:
+            formatted_text = f"{media_text}\n\n{formatted_text}"
+            
+        return formatted_text, media_path
+
+    async def handle_info(self, event: Message):
+        """Обработчик команды .info - показывает информацию о боте"""
+        if not await self.is_owner(event):
+            return
+            
+        try:
+            info_text, media_path = await self._generate_info_message()
+            
+            if media_path and os.path.exists(media_path):
+                # Определяем тип медиа по расширению
+                ext = os.path.splitext(media_path)[1].lower()
+                
+                if ext in ('.jpg', '.jpeg', '.png', '.webp'):
                     await event.delete()
                     await self.manager.client.send_file(
                         event.chat_id,
-                        media,
-                        caption=f"{value}\n\n{info_msg}" if value else info_msg,
+                        media_path,
+                        caption=info_text,
                         parse_mode='html'
                     )
-                elif reply.video or reply.document:
+                elif ext in ('.mp4', '.gif', '.webm'):
                     await event.delete()
                     await self.manager.client.send_file(
                         event.chat_id,
-                        media,
-                        caption=f"{value}\n\n{info_msg}" if value else info_msg,
+                        media_path,
+                        caption=info_text,
                         parse_mode='html',
                         supports_streaming=True
                     )
-                    
-                os.remove(media)
-            except Exception as e:
-                await event.edit(f"❌ Ошибка: {str(e)}")
-                if os.path.exists(media):
-                    os.remove(media)
-        else:
-            await event.edit("❌ Неизвестный тип настройки")
-            
+                else:
+                    await event.edit(
+                        "⚠️ Недопустимый формат медиа. Разрешены только изображения и видео.\n\n"
+                        f"{info_text}",
+                        parse_mode='html'
+                    )
+            else:
+                await event.edit(info_text, parse_mode='html')
+                
+        except Exception as e:
+            await event.edit(f"❌ Ошибка при генерации информации: {str(e)}")            
 
     async def _generate_info_message(self):
         """Генерация сообщения .info с учетом кастомного шаблона"""
@@ -725,45 +847,7 @@ class CoreCommands:
         except Exception as e:
             await event.edit(f"❌ Ошибка при получении логов: {str(e)}")
 
-    def get_system_info(self):
-        """Получение информации о системе"""
-        try:
-            mem = psutil.virtual_memory()
-            return {
-                'memory': {
-                    'used': round(mem.used / 1024 / 1024, 1),
-                    'total': round(mem.total / 1024 / 1024, 1),
-                    'percent': mem.percent
-                },
-                'cpu': {
-                    'cores': psutil.cpu_count(),
-                    'usage': psutil.cpu_percent()
-                },
-                'uptime': str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
-            }
-        except Exception as e:
-            self.manager.logger.error(f"Error getting system info: {str(e)}")
-            return {}
 
-    def get_system_info(self):
-        """Получение информации о системе"""
-        try:
-            mem = psutil.virtual_memory()
-            return {
-                'memory': {
-                    'used': round(mem.used / 1024 / 1024, 1),
-                    'total': round(mem.total / 1024 / 1024, 1),
-                    'percent': mem.percent
-                },
-                'cpu': {
-                    'cores': psutil.cpu_count(),
-                    'usage': psutil.cpu_percent()
-                },
-                'uptime': str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
-            }
-        except Exception as e:
-            self.manager.logger.error(f"Error getting system info: {str(e)}")
-            return {}
     
     async def handle_reloadmod(self, event: Message):
         """Перезагрузка модуля"""
@@ -1225,12 +1309,6 @@ class CoreCommands:
         
         await self.manager.save_loaded_modules()
         os.execl(sys.executable, sys.executable, *sys.argv)
-
-    async def handle_info(self, event: Message):
-        """Обработчик команды .info - показывает информацию о боте"""
-        if not await self.is_owner(event):
-            return
-        await event.edit(await self._generate_info_message(), parse_mode='html', link_preview=False)
 
     def register_handlers(self):
         prefix = re.escape(self.manager.prefix)
