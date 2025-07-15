@@ -407,20 +407,20 @@ class CoreCommands:
         """Универсальная команда для настроек"""
         if not await self.is_owner(event):
             return
-        
+            
         args = event.pattern_match.group(1)
         if not args:
             await event.edit(
                 "⚙️ <b>Доступные настройки:</b>\n\n"
-                f"<code>{self.manager.prefix}set prefix [новый префикс]</code> - Изменить префикс команд\n"
-                f"<code>{self.manager.prefix}set info [шаблон]</code> - Настроить текст для .info\n"
-                f"<code>{self.manager.prefix}set media</code> - Установить медиа для .info (ответ на сообщение)\n"
-                f"<code>{self.manager.prefix}set reset [all|prefix|info|media]</code> - Сбросить настройки\n\n"
+                f"<code>{self.manager.prefix}set prefix [новый префикс]</code>\n"
+                f"<code>{self.manager.prefix}set info [шаблон]</code>\n"
+                f"<code>{self.manager.prefix}set media</code> (ответ на сообщение)\n"
+                f"<code>{self.manager.prefix}set reset [all|prefix|info|media]</code>\n\n"
                 "ℹ️ Для просмотра текущих настроек используйте команду без значения",
                 parse_mode='html'
             )
             return
-        
+            
         args = args.split(' ', 1)
         setting_type = args[0].lower()
         value = args[1] if len(args) > 1 else None
@@ -439,9 +439,8 @@ class CoreCommands:
             
         elif setting_type == "info":
             if not value:
-                # Показать текущий шаблон
                 try:
-                    with open(CUSTOM_INFO_FILE, 'r') as f:
+                    with open(CUSTOM_INFO_FILE, 'r', encoding='utf-8') as f:
                         current_template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
                 except:
                     current_template = DEFAULT_INFO_TEMPLATE
@@ -451,22 +450,15 @@ class CoreCommands:
                     f"<code>{current_template}</code>\n\n"
                     f"Доступные переменные: version, session_id, last_update_time, "
                     f"owner_id, owner_name, uptime, modules_count, os_info, python_version, "
-                    f"telethon_version, repo_url",
+                    f"telethon_version, repo_url, prefix",
                     parse_mode='html'
                 )
                 return
                 
             try:
-                # Загружаем текущие данные (если есть)
-                current_data = {}
-                if os.path.exists(CUSTOM_INFO_FILE):
-                    with open(CUSTOM_INFO_FILE, 'r') as f:
-                        current_data = json.load(f)
-                
-                # Обновляем только шаблон
-                current_data['template'] = value
-                with open(CUSTOM_INFO_FILE, 'w') as f:
-                    json.dump(current_data, f)
+                data = {'template': value}
+                with open(CUSTOM_INFO_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False)
                     
                 await event.edit("✅ Текст для .info успешно обновлен!")
             except Exception as e:
@@ -485,7 +477,7 @@ class CoreCommands:
             try:
                 current_data = {}
                 if os.path.exists(CUSTOM_INFO_FILE):
-                    with open(CUSTOM_INFO_FILE, 'r') as f:
+                    with open(CUSTOM_INFO_FILE, 'r', encoding='utf-8') as f:
                         current_data = json.load(f)
                 
                 media_dir = os.path.join('source', 'media')
@@ -495,21 +487,19 @@ class CoreCommands:
                     if old_file.startswith('info_media'):
                         os.remove(os.path.join(media_dir, old_file))
                 
-                # Сохраняем новое медиа
                 media_path = os.path.join(media_dir, f'info_media_{datetime.now().strftime("%Y%m%d%H%M%S")}')
                 media_path = await reply.download_media(file=media_path)
                 
-                # Обновляем только путь к медиа
                 current_data['media_path'] = media_path
-                with open(CUSTOM_INFO_FILE, 'w') as f:
-                    json.dump(current_data, f)
+                with open(CUSTOM_INFO_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(current_data, f, ensure_ascii=False)
                     
                 await event.edit("✅ Медиа для .info успешно сохранено!")
             except Exception as e:
                 await event.edit(f"❌ Ошибка: {str(e)}")
                 if 'media_path' in locals() and os.path.exists(media_path):
                     os.remove(media_path)
-                
+                    
         elif setting_type == "reset":
             reset_type = value.lower() if value else "all"
             
@@ -531,41 +521,59 @@ class CoreCommands:
                     
                     if reset_type in ("all", "media"):
                         if 'media_path' in current_data:
-                            media_path = current_data['media_path']
-                            if os.path.exists(media_path):
-                                os.remove(media_path)
+                            if os.path.exists(current_data['media_path']):
+                                os.remove(current_data['media_path'])
                             del current_data['media_path']
                     
                     with open(CUSTOM_INFO_FILE, 'w') as f:
                         json.dump(current_data, f)
                 
-                await event.edit(f"✅ Настройки {reset_type} сброшены к значениям по умолчанию!")
+                await event.edit(f"✅ Настройки {reset_type} сброшены!")
             except Exception as e:
                 await event.edit(f"❌ Ошибка сброса: {str(e)}")
         else:
             await event.edit("❌ Неизвестный тип настройки")
 
+    def get_platform_info() -> str:
+        """Получение информации о платформе с определением Termux/UserLAnd/WSL"""
+        system = platform.system()
+        
+        # Проверка на Termux
+        if 'ANDROID_ROOT' in os.environ:
+            return "Android (Termux)"
+        
+        # Проверка на UserLAnd
+        if os.path.exists('/etc/UserLAnd'):
+            return "UserLAnd"
+        
+        # Проверка на WSL
+        if 'microsoft' in platform.uname().release.lower():
+            return "WSL"
+        
+        # Стандартная информация
+        return system    
+    
     async def _generate_info_message(self):
         """Генерация сообщения .info с медиа и текстом"""
         me = await self.manager.client.get_me()
         uptime = datetime.now() - self.manager.start_time
 
+        # Проверяем существование файла и создаем его при необходимости
         if not os.path.exists(CUSTOM_INFO_FILE):
             os.makedirs(os.path.dirname(CUSTOM_INFO_FILE), exist_ok=True)
-            with open(CUSTOM_INFO_FILE, 'w') as f:
+            with open(CUSTOM_INFO_FILE, 'w', encoding='utf-8') as f:
                 json.dump({'template': DEFAULT_INFO_TEMPLATE}, f)
 
         try:
-            with open(CUSTOM_INFO_FILE, 'r') as f:
+            with open(CUSTOM_INFO_FILE, 'r', encoding='utf-8') as f:
                 custom_data = json.load(f)
                 template = custom_data.get('template', DEFAULT_INFO_TEMPLATE)
                 media_path = custom_data.get('media_path', None)
-                media_text = custom_data.get('media_text', "")  # Текст для медиа
-        except:
+        except Exception as e:
             template = DEFAULT_INFO_TEMPLATE
             media_path = None
-            media_text = ""
         
+        # Подготовка данных для вставки в шаблон
         info_data = {
             'version': self.manager.version,
             'session_id': self.manager.session_id,
@@ -574,25 +582,19 @@ class CoreCommands:
             'owner_name': me.first_name,
             'uptime': str(uptime).split('.')[0],
             'modules_count': len(self.manager.modules),
-            'os_info': f"{platform.system()} {platform.release()}",
+            'os_info': get_platform_info(),  # Используем новую функцию
             'python_version': platform.python_version(),
             'telethon_version': telethon.__version__,
-            'repo_url': self.repo_url
+            'repo_url': self.repo_url,
+            'prefix': self.manager.prefix
         }
-        
-        # Генерируем текст
+
+        # Форматируем текст
         info_text = template.format(**info_data)
-        
-        # Если есть медиа, добавляем текст к нему
-        if media_path and os.path.exists(media_path):
-            if media_text:
-                info_text = f"{media_text}\n\n{info_text}"
-            return info_text, media_path
-        
-        return info_text, None
-        
+        return info_text, media_path
+    
     async def handle_info(self, event: Message):
-        """Обработчик команды .info - показывает информацию о боте"""
+        """Обработчик команды .info"""
         if not await self.is_owner(event):
             return
             
@@ -600,7 +602,6 @@ class CoreCommands:
             info_text, media_path = await self._generate_info_message()
             
             if media_path and os.path.exists(media_path):
-                # Определяем тип медиа по расширению
                 ext = os.path.splitext(media_path)[1].lower()
                 
                 if ext in ('.jpg', '.jpeg', '.png', '.webp'):
@@ -622,7 +623,7 @@ class CoreCommands:
                     )
                 else:
                     await event.edit(
-                        "⚠️ Недопустимый формат медиа. Разрешены только изображения и видео.\n\n"
+                        "⚠️ Недопустимый формат медиа\n\n"
                         f"{info_text}",
                         parse_mode='html'
                     )
@@ -630,8 +631,7 @@ class CoreCommands:
                 await event.edit(info_text, parse_mode='html')
                 
         except Exception as e:
-            await event.edit(f"❌ Ошибка при генерации информации: {str(e)}")
-                
+            await event.edit(f"❌ Ошибка при генерации информации: {str(e)}")        
         
     async def get_module_info(self, module_name: str) -> Dict[str, Any]:
         """Получение информации о модуле в структурированном виде"""
