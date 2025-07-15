@@ -5,7 +5,7 @@ import random
 import string
 from pathlib import Path
 from typing import Optional, Tuple, List
-
+import subprocess 
 import aiohttp
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError, RPCError
@@ -204,71 +204,85 @@ class BotManager:
             print(f"⚠️ Ошибка проверки токена: {e}")
             return False
 
-    async def run(self) -> None:
-        """🚀 Основной цикл работы"""
-        try:
-            # 🔑 Подключение к Telegram
-            await self.client.start()
-            me = await self.client.get_me()
-            print(f"\n👤 Авторизован как: {me.first_name} (ID: {me.id})")
+async def check_internet_connection() -> bool:
+    """Проверка наличия интернет-соединения."""
+    try:
+        # Выполняем команду ping на Google DNS
+        output = subprocess.check_output(['ping', '-c', '1', '8.8.8.8'], stderr=subprocess.DEVNULL)
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
-            # 🤖 Инициализация бота
-            if not self.BOT_TOKEN_FILE.exists() or not self.BOT_TOKEN_FILE.stat().st_size:
-                choice = input("\n📝 Файл токена пуст. Загрузить существующего бота? (да/нет): ").lower()
-                
-                if choice in ('y', 'yes', 'да', 'д'):
-                    username = input("Введите @username бота: ").strip()
-                    if username.startswith('@'):
-                        username = username[1:]
-                        
-                    if not username:
-                        print("🛑 Не указано имя бота")
-                        return
-                        
-                    result = await self.load_existing_bot(username)
-                    if not result:
-                        print("🛑 Не удалось загрузить бота")
+async def run(self) -> None:
+    """🚀 Основной цикл работы"""
+    try:
+        # Проверка интернет-соединения
+        if not await check_internet_connection():
+            print("⚠️ [Ошибка] Нет интернет-соединения. Проверьте ваше соединение.")
+            return
+
+        # 🔑 Подключение к Telegram
+        await self.client.start()
+        me = await self.client.get_me()
+        print(f"\n👤 Авторизован как: {me.first_name} (ID: {me.id})")
+
+        # 🤖 Инициализация бота
+        if not self.BOT_TOKEN_FILE.exists() or not self.BOT_TOKEN_FILE.stat().st_size:
+            choice = input("\n📝 Файл токена пуст. Загрузить существующего бота? (да/нет): ").lower()
+            
+            if choice in ('y', 'yes', 'да', 'д'):
+                username = input("Введите @username бота: ").strip()
+                if username.startswith('@'):
+                    username = username[1:]
+                    
+                if not username:
+                    print("🛑 Не указано имя бота")
+                    return
+                    
+                result = await self.load_existing_bot(username)
+                if not result:
+                    print("🛑 Не удалось загрузить бота")
+                    return
+            else:
+                result = await self.create_new_bot()
+                if not result:
+                    print("🛑 Не удалось создать бота")
+                    return
+        else:
+            try:
+                content = self.BOT_TOKEN_FILE.read_text().strip()
+                if content.count(':') >= 2:
+                    parts = content.split(':')
+                    token = ':'.join(parts[2:])
+                    
+                    if not await self.check_bot_token(token):
+                        print("❌ Токен недействителен")
                         return
                 else:
-                    result = await self.create_new_bot()
-                    if not result:
-                        print("🛑 Не удалось создать бота")
-                        return
-            else:
-                try:
-                    content = self.BOT_TOKEN_FILE.read_text().strip()
-                    if content.count(':') >= 2:
-                        parts = content.split(':')
-                        token = ':'.join(parts[2:])
-                        
-                        if not await self.check_bot_token(token):
-                            print("❌ Токен недействителен")
-                            return
-                    else:
-                        print("❌ Неверный формат токена")
-                        return
-                except Exception as e:
-                    print(f"❌ Ошибка чтения токена: {e}")
+                    print("❌ Неверный формат токена")
                     return
-
-            # 🧩 Загрузка модулей
-            try:
-                from modules import main as modules_main
-                await modules_main(self.client)
-                print("\n🔌 Модули успешно загружены")
-            except ImportError:
-                print("\n⚠️ Модули не найдены")
             except Exception as e:
-                print(f"\n❌ Ошибка модулей: {e}")
+                print(f"❌ Ошибка чтения токена: {e}")
+                return
 
-        except KeyboardInterrupt:
-            print("\n🛑 Работа остановлена")
+        # 🧩 Загрузка модулей
+        try:
+            from modules import main as modules_main
+            await modules_main(self.client)
+            print("\n🔌 Модули успешно загружены")
+        except ImportError:
+            print("\n⚠️ Модули не найдены")
         except Exception as e:
-            print(f"\n🛑 Критическая ошибка: {e}")
-        finally:
-            if self.client.is_connected():
-                await self.client.disconnect()
-                print("\n🔌 Соединение закрыто")
+            print(f"\n❌ Ошибка модулей: {e}")
+
+    except KeyboardInterrupt:
+        print("\n🛑 Работа остановлена")
+    except Exception as e:
+        print(f"\n🛑 Критическая ошибка: {e}")
+    finally:
+        if self.client.is_connected():
+            await self.client.disconnect()
+            print("\n🔌 Соединение закрыто")
 
 
 if __name__ == '__main__':
