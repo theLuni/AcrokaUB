@@ -473,7 +473,7 @@ class CoreCommands:
             f"• <a href='{self.docs_url}'>Документация</a>"
         ]
         
-        if self.manager.modules:
+        if self.manager.modules:  # Исправлено с modules на modules (если была опечатка)
             help_msg.extend(["", "🔌 <b>Загруженные модули и их команды:</b>"])
             for mod_name, mod_data in self.manager.modules.items():
                 module = mod_data['module']
@@ -538,8 +538,7 @@ class CoreCommands:
             await event.edit("\n".join(info_msg), parse_mode='html')
             
         except Exception as e:
-            await event.edit(f"❌ Ошибка при получении информации о модуле: {str(e)}")
-    
+            await event.edit(f"❌ Ошибка при получении информации о модуле: {str(e)}")    
     async def handle_logs(self, event: Message):
         """Отправка логов"""
         if not await self.is_owner(event):
