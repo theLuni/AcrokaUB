@@ -637,7 +637,6 @@ class CoreCommands:
                 os.remove(path)
                 
     async def handle_searchmod(self, event: Message):
-        """Поиск модулей в репозитории"""
         if not await self.is_owner(event):
             return
             
@@ -650,23 +649,22 @@ class CoreCommands:
             await event.edit("🔍 Поиск модулей...")
             
             # Получаем список файлов из репозитория
-            api_url = f"https://api.github.com/repos/theLuni/AcrokaUB-Modules/main/"
+            api_url = "https://api.github.com/repos/theLuni/AcrokaUB-Modules/contents/"
             headers = {'Accept': 'application/vnd.github.v3+json'}
             response = requests.get(api_url, headers=headers)
             response.raise_for_status()
             
-            modules = []
-            for item in response.json():
-                if item['name'].endswith('.py') and search_query.lower() in item['name'].lower():
-                    modules.append(item)
+            modules = [
+                item for item in response.json()
+                if item['name'].endswith('.py') and search_query.lower() in item['name'].lower()
+            ]
             
             if not modules:
                 await event.edit(f"🔍 По запросу '{search_query}' ничего не найдено")
                 return
                 
-            # Получаем информацию о каждом модуле
             results = []
-            for module in modules[:10]:  # Ограничиваем 10 результатами
+            for module in modules[:10]:  # Ограничиваем результатами 10
                 raw_url = f"{RAW_MODS_URL}{module['name']}"
                 try:
                     module_content = requests.get(raw_url).text
@@ -678,7 +676,7 @@ class CoreCommands:
                         f"📝 <i>{description[:100]}...</i>\n"
                         f"🔗 <code>.dlm {module['name']}</code>\n"
                     )
-                except:
+                except Exception as e:
                     results.append(
                         f"📦 <b>{module['name'][:-3]}</b>\n"
                         f"🔗 <code>.dlm {module['name']}</code>\n"
@@ -700,7 +698,6 @@ class CoreCommands:
             await event.edit(f"❌ Ошибка поиска: {str(e)}")
 
     async def handle_downloadmod(self, event: Message):
-        """Скачивание модуля из репозитория"""
         if not await self.is_owner(event):
             return
             
@@ -713,6 +710,7 @@ class CoreCommands:
             module_file += '.py'
             
         try:
+
             msg = await event.edit(f"⬇️ Скачивание модуля {module_file}...")
             
             module_url = f"{RAW_MODS_URL}{module_file}"
