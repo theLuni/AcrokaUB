@@ -329,14 +329,10 @@ class CoreCommands:
         print(f"🔐 [Система] Владелец ID: {self.owner_id}")
         self.manager.logger.info(f"Bot started for user ID: {self.owner_id}")
 
-    async def is_owner(self, event: Message) -> bool:
-        if event.sender_id == self.owner_id:
-            return True
-        try:
-            await event.delete()
-        except:
-            pass
-        return False
+    async def is_owner(self, event):  # Оставлен только один метод is_owner
+        if not hasattr(self, 'owner_id'):
+            return False
+        return event.sender_id == self.owner_id
 
     async def handle_help(self, event: Message):
         if not await self.is_owner(event):
