@@ -489,34 +489,107 @@ class CoreCommands:
             
         try:
             media = await reply.download_media(file='temp_download')
+    async def handle_set(self, event: Message):
+        """Универсальная команда для настроек"""
+        if not await self.is_owner(event):
+            return
             
-            # Получаем информацию о системе
-            info_msg = await self._generate_info_message()
+        args = event.pattern_match.group(1).split(' ', 1)
+        if len(args) < 1:
+            await event.edit(
+                "⚙️ <b>Доступные настройки:</b>\n\n"
+                f"<code>{self.manager.prefix}set prefix [новый префикс]</code> - Изменить префикс команд\n"
+                f"<code>{self.manager.prefix}set info [шаблон]</code> - Настроить вывод .info\n"
+                f"<code>{self.manager.prefix}set media [текст]</code> - Установить текст для медиа-инфо\n\n"
+                "ℹ️ Для просмотра текущих настроек используйте команду без значения",
+                parse_mode='html'
+            )
+            return
             
-            # Отправляем медиа с текстом
-            if reply.photo:
-                await event.delete()
-                await self.manager.client.send_file(
-                    event.chat_id,
-                    media,
-                    caption=f"{caption}\n\n{info_msg}" if caption else info_msg,
+        setting_type = args[0].lower()
+        value = args[1] if len(args) > 1 else None
+        
+        if setting_type == "prefix":
+            if not value or len(value) > 3:
+                await event.edit("❌ Укажите новый префикс (1-3 символа)")
+                return
+                
+            self.manager.prefix = value
+            with open(PREFIX_FILE, 'w') as f:
+                f.write(value)
+                
+            await event.edit(f"✅ Префикс изменен на: <code>{value}</code>", parse_mode='html')
+            await self.manager.save_loaded_modules()
+            
+        elif setting_type == "info":
+            if not value:
+                # Показать текущий шаблон
+                try:
+                    with open(CUSTOM_INFO_FILE, 'r') as f:
+                        current_template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
+                except:
+                    current_template = DEFAULT_INFO_TEMPLATE
+                    
+                await event.edit(
+                    f"ℹ️ <b>Текущий шаблон .info:</b>\n\n"
+                    f"<code>{current_template}</code>\n\n"
+                    f"Доступные переменные: version, session_id, last_update_time, "
+                    f"owner_id, owner_name, uptime, modules_count, os_info, python_version, "
+                    f"telethon_version, cpu_usage, cpu_cores, ram_percent, ram_used, "
+                    f"ram_total, repo_url",
                     parse_mode='html'
                 )
-            elif reply.video or reply.document:
-                await event.delete()
-                await self.manager.client.send_file(
-                    event.chat_id,
-                    media,
-                    caption=f"{caption}\n\n{info_msg}" if caption else info_msg,
-                    parse_mode='html',
-                    supports_streaming=True
-                )
+                return
                 
-            os.remove(media)
-        except Exception as e:
-            await event.edit(f"❌ Ошибка: {str(e)}")
-            if os.path.exists(media):
+            try:
+                data = {'template': value}
+                with open(CUSTOM_INFO_FILE, 'w') as f:
+                    json.dump(data, f)
+                    
+                await event.edit("✅ Шаблон .info успешно обновлен!")
+            except Exception as e:
+                await event.edit(f"❌ Ошибка: {str(e)}")
+                
+        elif setting_type == "media":
+            if not event.is_reply:
+                await event.edit("❌ Ответьте на сообщение с медиа")
+                return
+                
+            reply = await event.get_reply_message()
+            if not (reply.photo or reply.video or reply.document):
+                await event.edit("❌ Сообщение должно содержать фото, видео или документ")
+                return
+                
+            try:
+                media = await reply.download_media(file='temp_download')
+                info_msg = await self._generate_info_message()
+                
+                if reply.photo:
+                    await event.delete()
+                    await self.manager.client.send_file(
+                        event.chat_id,
+                        media,
+                        caption=f"{value}\n\n{info_msg}" if value else info_msg,
+                        parse_mode='html'
+                    )
+                elif reply.video or reply.document:
+                    await event.delete()
+                    await self.manager.client.send_file(
+                        event.chat_id,
+                        media,
+                        caption=f"{value}\n\n{info_msg}" if value else info_msg,
+                        parse_mode='html',
+                        supports_streaming=True
+                    )
+                    
                 os.remove(media)
+            except Exception as e:
+                await event.edit(f"❌ Ошибка: {str(e)}")
+                if os.path.exists(media):
+                    os.remove(media)
+        else:
+            await event.edit("❌ Неизвестный тип настройки")
+            
 
     async def _generate_info_message(self):
         """Генерация сообщения .info с учетом кастомного шаблона"""
@@ -1279,10 +1352,7 @@ class CoreCommands:
             (rf'^{prefix}mfind (.+)$', self.handle_searchmod),
             (rf'^{prefix}dlm (\w+\.py)$', self.handle_downloadmod),
             (rf'^{prefix}dlm (\w+)$', self.handle_downloadmod),
-            (rf'^{prefix}setprefix (\S+)$', self.handle_setprefix),
-            (rf'^{prefix}setinfo$', self.handle_setinfo),
-            (rf'^{prefix}setinfo (.+)$', self.handle_setinfo),
-            (rf'^{prefix}mediainfo(?: (.+))?$', self.handle_media_info),
+            (rf'^{prefix}set(?:\s+(.+))?$', self.handle_set), 
         ]
 
         for pattern, handler in cmd_handlers:
