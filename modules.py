@@ -351,45 +351,56 @@ class CoreCommands:
         if not await self.is_owner(event):
             return
             
-        prefix = self.manager.prefix
+        prefix = self.prefix
         
         help_msg = [
-            f"✨ <b>Acroka UserBot Help (v{self.manager.version})</b> ✨",
+            f"✨ <b>Acroka UserBot Help (v{self.version})</b> ✨",
             f"🔹 <b>Префикс:</b> <code>{prefix}</code>",
-            f"🔹 <b>Сессия:</b> <code>{self.manager.session_id}</code>",
+            f"🔹 <b>Сессия:</b> <code>{self.session_id}</code>",
             "",
             "⚙️ <b>Основные команды:</b>",
-            f"• <code>{prefix}help</code>",
-            f"• <code>{prefix}ping</code>",
-            f"• <code>{prefix}info</code>",
-            f"• <code>{prefix}update</code>",
-            f"• <code>{prefix}restart</code>",
-            f"• <code>{prefix}logs</code>",
+            f"• <code>{prefix}help</code> - Показать это сообщение",
+            f"• <code>{prefix}ping</code> - Проверить работоспособность бота",
+            f"• <code>{prefix}info</code> - Информация о боте и системе",
+            f"• <code>{prefix}update</code> - Обновить бота",
+            f"• <code>{prefix}restart</code> - Перезапустить бота",
+            f"• <code>{prefix}logs</code> - Получить файл логов",
             "",
             "📦 <b>Управление модулями:</b>",
-            f"• <code>{prefix}lm</code>",
-            f"• <code>{prefix}gm [name]</code>",
-            f"• <code>{prefix}ulm [name]</code>",
-            f"• <code>{prefix}rlm [name]</code>",
-            f"• <code>{prefix}mlist</code>",
-            f"• <code>{prefix}mfind [query]</code>",
-            f"• <code>{prefix}dlm [name]</code>",
-            f"• <code>{prefix}mhelp [name]</code>",
+            f"• <code>{prefix}lm</code> - Загрузить модуль из ответа на файл",
+            f"• <code>{prefix}gm [name]</code> - Получить файл модуля",
+            f"• <code>{prefix}ulm [name]</code> - Выгрузить и удалить модуль",
+            f"• <code>{prefix}rlm [name]</code> - Перезагрузить модуль",
+            f"• <code>{prefix}mlist</code> - Список загруженных модулей",
+            f"• <code>{prefix}mfind [query]</code> - Поиск модулей в репозитории",
+            f"• <code>{prefix}dlm [name]</code> - Скачать модуль из репозитория",
+            f"• <code>{prefix}mhelp [name]</code> - Помощь по конкретному модулю",
             "",
             "🛠️ <b>Утилиты:</b>",
-            f"• <code>{prefix}tr [lang] [text]</code>",
-            f"• <code>{prefix}calc [expr]</code>",
-            f"• <code>{prefix}clean</code>",
+            f"• <code>{prefix}tr [lang] [text]</code> - Переводчик текста",
+            f"• <code>{prefix}calc [expr]</code> - Калькулятор выражений",
+            f"• <code>{prefix}clean</code> - Очистка кэша и временных файлов",
             "",
             "🔗 <b>Ссылки:</b>",
             f"• <a href='{self.repo_url}'>Репозиторий</a>",
             f"• <a href='{self.docs_url}'>Документация</a>"
         ]
         
-        if self.manager.modules:
-            help_msg.extend(["", "🔌 <b>Загруженные модули:</b>"])
-            for mod_name in self.manager.modules.keys():
-                help_msg.append(f"• <code>{mod_name}</code>")
+        if self.modules:
+            help_msg.extend(["", "🔌 <b>Загруженные модули и их команды:</b>"])
+            for mod_name, mod_data in self.modules.items():
+                module = mod_data['module']  
+                commands = getattr(module, 'commands', {})
+
+                if isinstance(commands, dict):
+                    cmd_list = [f"<code>{prefix}{cmd}</code>" for cmd in commands.keys()]
+                elif isinstance(commands, list):
+                    cmd_list = [f"<code>{prefix}{cmd}</code>" for cmd in commands]
+                else:
+                    cmd_list = []
+                    
+                if cmd_list:
+                    help_msg.append(f"• <b>{mod_name}</b>: {', '.join(cmd_list)}")
 
         await event.edit("\n".join(help_msg), parse_mode='html')
 
@@ -400,29 +411,17 @@ class CoreCommands:
             
         module_name = event.pattern_match.group(1)
         
-        if module_name not in self.manager.modules:
+        if module_name not in self.modules:
             await event.edit(f"❌ Модуль <code>{module_name}</code> не найден", parse_mode='html')
             return
             
         try:
-            module_data = self.manager.modules[module_name]
+            module_data = self.modules[module_name]
             module = module_data['module']
             
-            desc = getattr(module, '__doc__', 'Без описания').strip()
-            version = getattr(module, 'version', '1.0')
+            desc = module_data['description'].strip()
+            version = module_data['version']
             commands = getattr(module, 'commands', {})
-            
-            desc = desc.replace("Описание:", "").strip()
-            
-            formatted_commands = []
-            if isinstance(commands, dict):
-                for cmd, cmd_desc in commands.items():
-                    if cmd_desc:
-                        formatted_commands.append(f"• <code>{self.manager.prefix}{cmd}</code> - {cmd_desc}")
-                    else:
-                        formatted_commands.append(f"• <code>{self.manager.prefix}{cmd}</code>")
-            elif isinstance(commands, list):
-                formatted_commands = [f"• <code>{self.manager.prefix}{cmd}</code>" for cmd in commands]
             
             info_msg = [
                 f"📦 <b>Модуль {module_name} v{version}</b>",
@@ -431,20 +430,23 @@ class CoreCommands:
                 ""
             ]
             
-            if formatted_commands:
-                info_msg.extend([
-                    "⚙️ <b>Доступные команды:</b>",
-                    *formatted_commands,
-                    ""
-                ])
-            
+            if commands:
+                info_msg.append("⚙️ <b>Доступные команды:</b>")
+                
+                if isinstance(commands, dict):
+                    for cmd, cmd_desc in commands.items():
+                        if cmd_desc:
+                            info_msg.append(f"• <code>{self.prefix}{cmd}</code>: {cmd_desc}")
+                elif isinstance(commands, list):
+                    info_msg.extend([f"• <code>{self.prefix}{cmd}</code>" for cmd in commands])
+
+            info_msg.append("")
             info_msg.append(f"🕒 <b>Загружен:</b> {(datetime.now() - module_data['loaded_at']).seconds // 60} минут назад")
             
             await event.edit("\n".join(info_msg), parse_mode='html')
-            
+        
         except Exception as e:
-            await event.edit(f"❌ Ошибка при получении информации о модуле: {str(e)}")
-         
+            await event.edit(f"❌ Ошибка при получении информации о модуле: {str(e)}")       
     async def handle_logs(self, event: Message):
         """Отправка логов"""
         if not await self.is_owner(event):
