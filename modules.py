@@ -210,6 +210,7 @@ class ModuleManager:
             if os.path.exists(module_path):
                 os.remove(module_path)
             return False
+
     def get_system_info(self):
         """Получение информации о системе"""
         try:
@@ -227,8 +228,9 @@ class ModuleManager:
                 'uptime': str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
             }
         except Exception as e:
-            self.manager.logger.error(f"Error getting system info: {str(e)}")
-            return {}            
+            self.logger.error(f"Error getting system info: {str(e)}")
+            return {}
+    
     async def _check_dependencies(self, module_path: str) -> bool:
         """Проверка и установка зависимостей модуля"""
         try:
@@ -491,16 +493,25 @@ class CoreCommands:
                 os.remove(media)
 
     async def _generate_info_message(self):
+
+    async def _generate_info_message(self):
         """Генерация сообщения .info с учетом кастомного шаблона"""
         me = await self.manager.client.get_me()
         uptime = datetime.now() - self.manager.start_time
-        sys_info = self.manager.get_system_info()
-        
+
+        # Проверяем существование файла и создаем его при необходимости
+        if not os.path.exists(CUSTOM_INFO_FILE):
+            os.makedirs(os.path.dirname(CUSTOM_INFO_FILE), exist_ok=True)
+            with open(CUSTOM_INFO_FILE, 'w') as f:
+                json.dump({'template': DEFAULT_INFO_TEMPLATE}, f)
+
         try:
             with open(CUSTOM_INFO_FILE, 'r') as f:
                 template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
         except:
             template = DEFAULT_INFO_TEMPLATE
+        
+        sys_info = self.manager.get_system_info()  # Предполагаем, что метод get_system_info определен в manager
         
         info_data = {
             'version': self.manager.version,
@@ -521,8 +532,8 @@ class CoreCommands:
             'repo_url': self.repo_url
         }
         
-        return template.format(**info_data)    
-                    
+        return template.format(**info_data)
+        
     async def get_module_info(self, module_name: str) -> Dict[str, Any]:
         """Получение информации о модуле в структурированном виде"""
         if module_name not in self.manager.modules:
