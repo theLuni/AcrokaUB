@@ -204,15 +204,12 @@ class BotManager:
             print(f"⚠️ Ошибка проверки токена: {e}")
             return False
 
-    
-
-
-    async def check_internet_connection() -> bool:
-    """Проверка наличия интернет-соединения."""
+    async def check_internet_connection(self) -> bool:
+        """Проверка наличия интернет-соединения."""
         try:
-        # Определяем операционную систему
+            # Определяем операционную систему
             param = '-n' if platform.system().lower() == 'windows' else '-c'
-         # Выполняем команду ping на Google DNS
+            # Выполняем команду ping на Google DNS
             output = subprocess.check_output(['ping', param, '1', '8.8.8.8'], stderr=subprocess.DEVNULL)
             return True
         except subprocess.CalledProcessError:
