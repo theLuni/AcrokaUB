@@ -4,7 +4,7 @@ import re
 import random
 import string
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 import aiohttp
 from telethon import TelegramClient, events
@@ -14,271 +14,274 @@ from config import API_ID, API_HASH
 
 class BotManager:
     def __init__(self):
-        # Используем Path для более надежной работы с путями
+        # 📂 Инициализация путей
         self.BASE_DIR = Path(__file__).parent.resolve()
         self.SOURCE_DIR = self.BASE_DIR / 'source'
-        self.SOURCE_DIR.mkdir(exist_ok=True)  # Создаем папку, если ее нет
+        self.SOURCE_DIR.mkdir(exist_ok=True)
         
+        # 🔑 Файлы конфигурации
         self.BOT_TOKEN_FILE = self.SOURCE_DIR / 'bottoken.txt'
-        self.BOT_IMAGE = self.SOURCE_DIR / 'pic.png'
+        self.BOT_IMAGE = self.SOURCE_DIR / 'bot_avatar.png'
         self.PREFIX_FILE = self.SOURCE_DIR / 'prefix.txt'
         self.DEFAULT_PREFIX = '.'
         
-        # Инициализация клиента с обработкой ошибок
+        # ⚡ Инициализация клиента
         try:
-            self.client = TelegramClient(f'acroka_session_{API_ID}', API_ID, API_HASH)
+            self.client = TelegramClient(
+                session=f'acroka_session_{API_ID}',
+                api_id=API_ID,
+                api_hash=API_HASH,
+                device_model="Bot Manager",
+                system_version="1.0",
+                app_version="2.0"
+            )
         except Exception as e:
-            raise RuntimeError(f"Ошибка инициализации Telegram клиента: {e}")
+            raise RuntimeError(f"❌ Ошибка инициализации клиента: {e}")
 
     async def sleep(self, delay: float = 1.0) -> None:
-        """Асинхронная задержка с обработкой FloodWait"""
+        """⏳ Асинхронная задержка с обработкой исключений"""
         try:
             await asyncio.sleep(delay)
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            print(f"⚠️ Неожиданная ошибка при задержке: {e}")
+            print(f"⚠️ Ошибка при задержке: {e}")
 
     def get_prefix(self) -> str:
-        """Получение префикса команд из файла"""
+        """🔤 Получение префикса команд"""
         try:
             if self.PREFIX_FILE.exists():
                 prefix = self.PREFIX_FILE.read_text().strip()
                 return prefix if len(prefix) == 1 else self.DEFAULT_PREFIX
             return self.DEFAULT_PREFIX
         except Exception as e:
-            print(f"⚠️ Ошибка чтения файла префикса: {e}")
+            print(f"⚠️ Ошибка чтения префикса: {e}")
             return self.DEFAULT_PREFIX
 
     async def create_new_bot(self) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """Создание нового бота через BotFather"""
-        print("🛠️ Создание нового бота...")
+        """🤖 Создание нового бота через BotFather"""
+        print("\n🛠️ Начинаем процесс создания бота...")
         
-        async def handle_conversation_step(conv, message: str, expected_response: str = None) -> Optional[str]:
-            """Обработка шага диалога с BotFather"""
+        async def botfather_step(conv, message: str, expected: str = None) -> Optional[str]:
+            """🔄 Обработка шага диалога с BotFather"""
             try:
                 await conv.send_message(message)
-                await self.sleep(2)  # Увеличили задержку для надежности
+                await self.sleep(2.5)  # Оптимальная задержка
                 response = await conv.get_response()
                 
-                if expected_response and expected_response not in response.text:
-                    print(f"❌ Неожиданный ответ от BotFather: {response.text}")
+                if expected and expected.lower() not in response.text.lower():
+                    print(f"❌ Неожиданный ответ: {response.text[:50]}...")
                     return None
                 return response.text
             except FloodWaitError as e:
-                print(f"⏳ Ожидание из-за флуда: {e.seconds} секунд")
-                await asyncio.sleep(e.seconds + 5)
-                return None
-            except RPCError as e:
-                print(f"❌ Ошибка RPC: {e}")
+                print(f"⏳ Ожидаем {e.seconds} сек. из-за ограничений...")
+                await asyncio.sleep(e.seconds + 2)
                 return None
             except Exception as e:
                 print(f"❌ Ошибка в диалоге: {e}")
                 return None
 
         try:
-            async with self.client.conversation('BotFather', timeout=30) as conv:
-                # Шаг 1: Инициируем создание бота
-                if not await handle_conversation_step(conv, '/newbot', "Alright"):
+            async with self.client.conversation('BotFather', timeout=60) as conv:
+                # 1. Инициируем создание
+                if not await botfather_step(conv, '/newbot', "Alright"):
                     return None, None, None
 
-                # Шаг 2: Устанавливаем имя бота
-                if not await handle_conversation_step(conv, 'Acroka Helper Bot'):
+                # 2. Устанавливаем имя
+                if not await botfather_step(conv, 'Acroka Helper Bot'):
                     return None, None, None
 
-                # Шаг 3: Устанавливаем username бота
-                username = self.generate_username()
-                response_text = await handle_conversation_step(conv, username, "Done!")
-                if not response_text:
+                # 3. Генерируем username
+                username = self._generate_username()
+                response = await botfather_step(conv, username, "Done!")
+                if not response:
                     return None, None, None
 
-                # Извлекаем токен из ответа
-                if match := re.search(r'(\d+:[a-zA-Z0-9_-]+)', response_text):
+                # 🔍 Извлекаем токен
+                if match := re.search(r'(\d+:[a-zA-Z0-9_-]{35})', response):
                     token = match.group(1)
                     user_id = token.split(':')[0]
                     
-                    # Сохраняем токен
-                    try:
-                        self.BOT_TOKEN_FILE.write_text(f"{username}:{user_id}:{token}")
-                    except Exception as e:
-                        print(f"⚠️ Ошибка сохранения токена: {e}")
-                        return None, None, None
-
-                    # Устанавливаем аватарку
-                    await self.set_bot_photo(username)
-                    print(f"✅ Бот @{username} успешно создан!")
+                    # 💾 Сохраняем данные
+                    self._save_bot_data(username, user_id, token)
+                    
+                    # 🖼️ Устанавливаем аватар
+                    await self._set_bot_avatar(username)
+                    
+                    print(f"\n✅ Бот @{username} успешно создан!")
                     return username, user_id, token
 
         except Exception as e:
-            print(f"❌ Ошибка при создании бота: {e}")
-            return None, None, None
+            print(f"❌ Ошибка создания бота: {e}")
+        return None, None, None
 
-    def generate_username(self) -> str:
-        """Генерация уникального имени бота"""
-        chars = string.ascii_lowercase + string.digits
-        rand_part = ''.join(random.choices(chars, k=8))  # Увеличили длину для уникальности
-        return f'acroka_{rand_part}_bot'
+    def _generate_username(self) -> str:
+        """🎲 Генерация уникального username"""
+        suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+        return f'acroka_{suffix}_bot'
 
-    async def set_bot_photo(self, username: str) -> bool:
-        """Установка аватарки для бота"""
+    def _save_bot_data(self, username: str, user_id: str, token: str) -> bool:
+        """💾 Сохранение данных бота"""
+        try:
+            data = f"{username}:{user_id}:{token}"
+            self.BOT_TOKEN_FILE.write_text(data)
+            return True
+        except Exception as e:
+            print(f"⚠️ Ошибка сохранения токена: {e}")
+            return False
+
+    async def _set_bot_avatar(self, username: str) -> bool:
+        """🖼️ Установка аватара бота"""
         if not self.BOT_IMAGE.exists():
-            print(f"⚠️ Файл аватарки {self.BOT_IMAGE} не найден")
+            print(f"⚠️ Файл аватара {self.BOT_IMAGE.name} не найден")
             return False
 
         try:
-            async with self.client.conversation('BotFather', timeout=30) as conv:
+            async with self.client.conversation('BotFather', timeout=60) as conv:
                 steps = [
                     ('/setuserpic', None),
                     (f'@{username}', None),
                     (self.BOT_IMAGE, None)
                 ]
                 
-                for message, expected in steps:
-                    try:
-                        if isinstance(message, str):
-                            await conv.send_message(message)
-                        else:
-                            await conv.send_file(message)
-                        await self.sleep(2)
-                        await conv.get_response()
-                    except Exception as e:
-                        print(f"⚠️ Ошибка установки аватарки на шаге {message}: {e}")
-                        return False
+                for msg, _ in steps:
+                    if isinstance(msg, str):
+                        await conv.send_message(msg)
+                    else:
+                        await conv.send_file(msg)
+                    await self.sleep(2)
+                    await conv.get_response()
 
-                print("🖼️ Аватарка бота успешно установлена!")
+                print("🖼️ Аватар успешно установлен!")
                 return True
         except Exception as e:
-            print(f"⚠️ Не удалось установить аватарку: {e}")
+            print(f"⚠️ Ошибка установки аватара: {e}")
             return False
 
     async def load_existing_bot(self, username: str) -> Tuple[Optional[str], Optional[str]]:
-        """Загрузка существующего бота"""
-        print(f"🔍 Загрузка бота @{username}...")
+        """🔍 Загрузка существующего бота"""
+        print(f"\n🔎 Ищем бота @{username}...")
         
         try:
-            async with self.client.conversation('BotFather', timeout=30) as conv:
-                # Запрашиваем токен
+            async with self.client.conversation('BotFather', timeout=60) as conv:
                 await conv.send_message('/token')
                 await self.sleep(2)
                 await conv.get_response()
                 
-                # Указываем username бота
                 await conv.send_message(f'@{username}')
                 await self.sleep(2)
                 response = await conv.get_response()
 
-                if match := re.search(r'(\d+:[a-zA-Z0-9_-]+)', response.text):
+                if match := re.search(r'(\d+:[a-zA-Z0-9_-]{35})', response.text):
                     token = match.group(1)
                     user_id = token.split(':')[0]
                     
-                    # Сохраняем токен
-                    try:
-                        self.BOT_TOKEN_FILE.write_text(f"{username}:{user_id}:{token}")
-                    except Exception as e:
-                        print(f"⚠️ Ошибка сохранения токена: {e}")
-                        return None, None
-
-                    # Устанавливаем аватарку
-                    await self.set_bot_photo(username)
-                    print(f"✅ Бот @{username} успешно загружен!")
-                    return username, token
+                    if self._save_bot_data(username, user_id, token):
+                        await self._set_bot_avatar(username)
+                        print(f"\n✅ Бот @{username} загружен!")
+                        return username, token
 
         except Exception as e:
-            print(f"❌ Ошибка при загрузке бота: {e}")
+            print(f"❌ Ошибка загрузки бота: {e}")
         return None, None
 
     async def check_bot_token(self, token: str) -> bool:
-        """Проверка валидности токена бота"""
+        """🔍 Проверка валидности токена"""
         url = f'https://api.telegram.org/bot{token}/getMe'
         
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=15)
+            ) as session:
                 async with session.get(url) as resp:
-                    if resp.status != 200:
-                        return False
-                    
                     data = await resp.json()
-                    return data.get('ok', False)
+                    return data.get('ok', False) and resp.status == 200
                     
         except asyncio.TimeoutError:
-            print("⚠️ Таймаут при проверке токена бота")
+            print("⚠️ Таймаут проверки токена")
             return False
         except Exception as e:
-            print(f"⚠️ Ошибка проверки токена бота: {e}")
+            print(f"⚠️ Ошибка проверки токена: {e}")
             return False
 
     async def run(self) -> None:
-        """Основной цикл работы бота"""
+        """🚀 Основной цикл работы"""
         try:
-            # Подключаемся к Telegram
+            # 🔑 Подключение к Telegram
             await self.client.start()
             me = await self.client.get_me()
-            print(f"🔑 Авторизован как: {me.first_name} (id: {me.id})")
+            print(f"\n👤 Авторизован как: {me.first_name} (ID: {me.id})")
 
-            # Проверяем и загружаем токен бота
-            if not self.BOT_TOKEN_FILE.exists() or self.BOT_TOKEN_FILE.stat().st_size == 0:
-                choice = input("Файл токена пуст. Загрузить существующего бота? (да/нет): ").strip().lower()
+            # 🤖 Инициализация бота
+            if not self.BOT_TOKEN_FILE.exists() or not self.BOT_TOKEN_FILE.stat().st_size:
+                choice = input("\n📝 Файл токена пуст. Загрузить существующего бота? (да/нет): ").lower()
                 
                 if choice in ('y', 'yes', 'да', 'д'):
-                    username = input("Введите имя бота (без @): ").strip()
+                    username = input("Введите @username бота: ").strip()
+                    if username.startswith('@'):
+                        username = username[1:]
+                        
                     if not username:
-                        print("🛑 Имя бота не может быть пустым")
+                        print("🛑 Не указано имя бота")
                         return
                         
                     result = await self.load_existing_bot(username)
                     if not result:
-                        print("🛑 Невозможно продолжить без токена бота")
+                        print("🛑 Не удалось загрузить бота")
                         return
-                    username, token = result
                 else:
                     result = await self.create_new_bot()
                     if not result:
-                        print("🛑 Невозможно продолжить без токена бота")
+                        print("🛑 Не удалось создать бота")
                         return
-                    username, user_id, token = result
             else:
                 try:
                     content = self.BOT_TOKEN_FILE.read_text().strip()
                     if content.count(':') >= 2:
                         parts = content.split(':')
-                        username = parts[0]
-                        user_id = parts[1]
                         token = ':'.join(parts[2:])
+                        
+                        if not await self.check_bot_token(token):
+                            print("❌ Токен недействителен")
+                            return
                     else:
-                        print("❌ Неверный формат файла токена")
-                        return
-
-                    if not await self.check_bot_token(token):
-                        print("❌ Недействительный токен бота")
+                        print("❌ Неверный формат токена")
                         return
                 except Exception as e:
-                    print(f"❌ Ошибка чтения файла токена: {e}")
+                    print(f"❌ Ошибка чтения токена: {e}")
                     return
 
-            # Запуск модулей
+            # 🧩 Загрузка модулей
             try:
                 from modules import main as modules_main
                 await modules_main(self.client)
+                print("\n🔌 Модули успешно загружены")
             except ImportError:
-                print("❌ Модули не найдены")
+                print("\n⚠️ Модули не найдены")
             except Exception as e:
-                print(f"❌ Ошибка в модулях: {e}")
+                print(f"\n❌ Ошибка модулей: {e}")
 
         except KeyboardInterrupt:
-            print("\n🛑 Бот остановлен пользователем")
+            print("\n🛑 Работа остановлена")
         except Exception as e:
-            print(f"🛑 Критическая ошибка: {str(e)}")
+            print(f"\n🛑 Критическая ошибка: {e}")
         finally:
             if self.client.is_connected():
                 await self.client.disconnect()
-                print("🔌 Отключено от Telegram")
+                print("\n🔌 Соединение закрыто")
 
 
 if __name__ == '__main__':
+    print("\n" + "="*50)
+    print("🤖 Acroka Bot Manager".center(50))
+    print("="*50 + "\n")
+    
     try:
-        bot = BotManager()
-        asyncio.run(bot.run())
+        manager = BotManager()
+        asyncio.run(manager.run())
     except KeyboardInterrupt:
-        print("\n🛑 Скрипт остановлен пользователем")
+        print("\n🛑 Скрипт остановлен")
     except Exception as e:
-        print(f"🛑 Фатальная ошибка: {str(e)}")
+        print(f"\n💥 Фатальная ошибка: {e}")
+    finally:
+        print("\n🏁 Работа завершена\n")
