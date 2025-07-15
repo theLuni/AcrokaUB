@@ -459,18 +459,15 @@ class CoreCommands:
             
         elif setting_type == "info":
             if event.is_reply:
-                # Если это ответ на сообщение, берем текст из replied сообщения
                 reply = await event.get_reply_message()
                 template_text = reply.text
             elif value:
-                # Если текст передан как аргумент
                 template_text = value
             else:
-                # Показать текущий шаблон
                 try:
                     with open(self.CUSTOM_INFO_FILE, 'r', encoding='utf-8') as f:
                         current_template = json.load(f).get('template', self.DEFAULT_INFO_TEMPLATE)
-                except:
+                except Exception:
                     current_template = self.DEFAULT_INFO_TEMPLATE
                     
                 await event.edit(
@@ -487,9 +484,9 @@ class CoreCommands:
                 data = {'template': template_text}
                 with open(self.CUSTOM_INFO_FILE, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=4)
-                await event.edit("✅ Текст для .info успешно обновлен!")
+                await event.edit("✅ Текст для .info успешно обновлен!", parse_mode='markdown')
             except Exception as e:
-                await event.edit(f"❌ Ошибка: {str(e)}")
+                await event.edit(f"❌ Ошибка: {str(e)}", parse_mode='markdown')
                 
         elif setting_type == "media":
             if not event.is_reply:
