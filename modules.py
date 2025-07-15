@@ -49,10 +49,6 @@ DEFAULT_INFO_TEMPLATE = """🤖 <b>Acroka UserBot v{version}</b>
 • <b>Python:</b> {python_version}
 • <b>Telethon:</b> {telethon_version}
 
-💻 <b>Ресурсы:</b>
-• <b>CPU:</b> {cpu_usage}% ({cpu_cores} ядер)
-• <b>RAM:</b> {ram_percent}% ({ram_used}/{ram_total} MB)
-
 📂 <b>Репозиторий:</b> <code>{repo_url}</code>"""
 
 class ModuleFinder:
@@ -456,8 +452,7 @@ class CoreCommands:
                     f"<code>{current_template}</code>\n\n"
                     f"Доступные переменные: version, session_id, last_update_time, "
                     f"owner_id, owner_name, uptime, modules_count, os_info, python_version, "
-                    f"telethon_version, cpu_usage, cpu_cores, ram_percent, ram_used, "
-                    f"ram_total, repo_url",
+                    f"telethon_version, rep_url",
                     parse_mode='html'
                 )
                 return
@@ -542,7 +537,7 @@ class CoreCommands:
             await event.edit("❌ Неизвестный тип настройки")
 
     async def _generate_info_message(self):
-        """Генерация сообщения .info с учетом кастомного шаблона и медиа"""
+        """Генерация сообщения .info с учетом кастомного шаблона"""
         me = await self.manager.client.get_me()
         uptime = datetime.now() - self.manager.start_time
 
@@ -554,16 +549,9 @@ class CoreCommands:
 
         try:
             with open(CUSTOM_INFO_FILE, 'r') as f:
-                data = json.load(f)
-                template = data.get('template', DEFAULT_INFO_TEMPLATE)
-                media_text = data.get('media_text', "")
-                media_path = data.get('media_path', None)
+                template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
         except:
             template = DEFAULT_INFO_TEMPLATE
-            media_text = ""
-            media_path = None
-        
-        sys_info = self.manager.get_system_info()
         
         info_data = {
             'version': self.manager.version,
@@ -571,26 +559,16 @@ class CoreCommands:
             'last_update_time': self.manager.last_update_time,
             'owner_id': me.id,
             'owner_name': me.first_name,
-            'uptime': str(timedelta(seconds=uptime.seconds)).split('.')[0],
+            'uptime': str(uptime).split('.')[0],
             'modules_count': len(self.manager.modules),
             'os_info': f"{platform.system()} {platform.release()}",
             'python_version': platform.python_version(),
             'telethon_version': telethon.__version__,
-            'cpu_usage': sys_info.get('cpu', {}).get('usage', 'N/A'),
-            'cpu_cores': sys_info.get('cpu', {}).get('cores', 'N/A'),
-            'ram_percent': sys_info.get('memory', {}).get('percent', 'N/A'),
-            'ram_used': sys_info.get('memory', {}).get('used', 'N/A'),
-            'ram_total': sys_info.get('memory', {}).get('total', 'N/A'),
             'repo_url': self.repo_url
         }
         
-        formatted_text = template.format(**info_data)
-        
-        if media_text:
-            formatted_text = f"{media_text}\n\n{formatted_text}"
-            
-        return formatted_text, media_path
-
+        return template.format(**info_data)
+    
     async def handle_info(self, event: Message):
         """Обработчик команды .info - показывает информацию о боте"""
         if not await self.is_owner(event):
@@ -632,45 +610,6 @@ class CoreCommands:
         except Exception as e:
             await event.edit(f"❌ Ошибка при генерации информации: {str(e)}")            
 
-    async def _generate_info_message(self):
-        """Генерация сообщения .info с учетом кастомного шаблона"""
-        me = await self.manager.client.get_me()
-        uptime = datetime.now() - self.manager.start_time
-
-        # Проверяем существование файла и создаем его при необходимости
-        if not os.path.exists(CUSTOM_INFO_FILE):
-            os.makedirs(os.path.dirname(CUSTOM_INFO_FILE), exist_ok=True)
-            with open(CUSTOM_INFO_FILE, 'w') as f:
-                json.dump({'template': DEFAULT_INFO_TEMPLATE}, f)
-
-        try:
-            with open(CUSTOM_INFO_FILE, 'r') as f:
-                template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
-        except:
-            template = DEFAULT_INFO_TEMPLATE
-        
-        sys_info = self.manager.get_system_info()  # Предполагаем, что метод get_system_info определен в manager
-        
-        info_data = {
-            'version': self.manager.version,
-            'session_id': self.manager.session_id,
-            'last_update_time': self.manager.last_update_time,
-            'owner_id': me.id,
-            'owner_name': me.first_name,
-            'uptime': str(uptime).split('.')[0],
-            'modules_count': len(self.manager.modules),
-            'os_info': f"{platform.system()} {platform.release()}",
-            'python_version': platform.python_version(),
-            'telethon_version': telethon.__version__,
-            'cpu_usage': sys_info.get('cpu', {}).get('usage', 'N/A'),
-            'cpu_cores': sys_info.get('cpu', {}).get('cores', 'N/A'),
-            'ram_percent': sys_info.get('memory', {}).get('percent', 'N/A'),
-            'ram_used': sys_info.get('memory', {}).get('used', 'N/A'),
-            'ram_total': sys_info.get('memory', {}).get('total', 'N/A'),
-            'repo_url': self.repo_url
-        }
-        
-        return template.format(**info_data)
         
     async def get_module_info(self, module_name: str) -> Dict[str, Any]:
         """Получение информации о модуле в структурированном виде"""
