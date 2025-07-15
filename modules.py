@@ -423,41 +423,54 @@ class CoreCommands:
         # Стандартная информация
         return system        
 
+
     async def handle_set(self, event):
         """Универсальная команда для настроек"""
         if not await self.is_owner(event):
             return
-        
+
         args = event.pattern_match.group(1)
         if not args:
             await event.edit(
                 "⚙️ <b>Доступные настройки:</b>\n\n"
-                f"<code>{self.manager.prefix}set prefix [новый префикс]</code>\n"
-                f"<code>{self.manager.prefix}set info</code> (ответ на сообщение с шаблоном)\n"
-                f"<code>{self.manager.prefix}set media</code> (ответ на сообщение)\n"
-                f"<code>{self.manager.prefix}set reset [all|prefix|info|media]</code>\n\n"
+                f"<code>{self.manager.prefix}cfg prefix [новый префикс]</code>\n"
+                f"<code>{self.manager.prefix}cfg info / help</code> сохранить настойку info / помощь (ответ на сообщение с шаблоном)\n"
+                f"<code>{self.manager.prefix}cfg media</code> (ответ на сообщение)\n"
+                f"<code>{self.manager.prefix}cfg reset [all|prefix|info|media]</code>\n\n"
                 "ℹ️ Для просмотра текущих настроек используйте команду без значения",
                 parse_mode='html'
             )
             return
-        
+
         parts = args.split(' ', 1)
         setting_type = parts[0].lower()
         value = parts[1] if len(parts) > 1 else None
-        
+
         if setting_type == "prefix":
             if not value or len(value) > 3:
                 await event.edit("❌ Укажите новый префикс (1-3 символа)")
                 return
-                
+
             self.manager.prefix = value
             with open(self.PREFIX_FILE, 'w') as f:
                 f.write(value)
-                
+
             await event.edit(f"✅ Префикс изменен на: <code>{value}</code>", parse_mode='html')
             await self.manager.save_loaded_modules()
-            
+
         elif setting_type == "info":
+            if value == "help":
+                help_text = (
+                    f"ℹ️ <b>Помощь по команде .info:</b>\n\n"
+                    f"Доступные переменные: version, session_id, last_update_time, "
+                    f"owner_id, owner_name, uptime, modules_count, os_info, python_version, "
+                    f"telethon_version, repo_url, prefix\n\n"
+                    f"<b>Текущий шаблон:</b>\n"
+                    f"<code>{self.DEFAULT_INFO_TEMPLATE}</code>"
+                )
+                await event.edit(help_text, parse_mode='html')
+                return
+
             if event.is_reply:
                 reply = await event.get_reply_message()
                 template_text = reply.text
@@ -469,7 +482,7 @@ class CoreCommands:
                         current_template = json.load(f).get('template', self.DEFAULT_INFO_TEMPLATE)
                 except Exception:
                     current_template = self.DEFAULT_INFO_TEMPLATE
-                    
+
                 await event.edit(
                     f"ℹ️ <b>Текущий текст для .info:</b>\n\n"
                     f"<code>{current_template}</code>\n\n"
@@ -479,7 +492,7 @@ class CoreCommands:
                     parse_mode='html'
                 )
                 return
-                
+
             try:
                 data = {'template': template_text}
                 with open(self.CUSTOM_INFO_FILE, 'w', encoding='utf-8') as f:
@@ -697,9 +710,7 @@ class CoreCommands:
             f"• <code>{prefix}update</code> - Обновить бота",
             f"• <code>{prefix}restart</code> - Перезапустить бота",
             f"• <code>{prefix}logs</code> - Получить файл логов",
-            f"• <code>{prefix}setprefix [новый префикс]</code> - Изменить префикс команд",
-            f"• <code>{prefix}setinfo [шаблон]</code> - Настроить вывод .info",
-            f"• <code>{prefix}mediainfo [текст]</code> - Отправить медиа с системной информацией",
+            f"• <code>{prefix}cfg</code> - Настройки [info / prefix]",
             "",
             "📦 <b>Управление модулями:</b>",
             f"• <code>{prefix}lm</code> - Загрузить модуль из ответа на файл",
