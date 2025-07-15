@@ -717,22 +717,8 @@ class CoreCommands:
             self.manager.logger.error(f"Error getting system info: {str(e)}")
             return {}
 
-        async def handle_info(event):
-            if not await self.is_owner(event):
-                return
-            await event.edit(await self._generate_info_message(), parse_mode='html', link_preview=False)
-        
-        cmd_handlers.append((rf'^{prefix}info$', handle_info))
 
-        for pattern, handler in cmd_handlers:
-            self.manager.client.add_event_handler(
-                handler,
-                events.NewMessage(pattern=pattern, outgoing=True)
-            )
-            
-    async def is_owner(self, event):
-        # Эта функция должна проверять является ли пользователь владельцем
-        return event.sender_id == self.manager.owner_id  # Пример, как может быть реализовано        
+    
     async def handle_reloadmod(self, event: Message):
         """Перезагрузка модуля"""
         if not await self.is_owner(event):
@@ -1216,7 +1202,24 @@ class CoreCommands:
             (rf'^{prefix}mfind (.+)$', self.handle_searchmod),
             (rf'^{prefix}dlm (\w+\.py)$', self.handle_downloadmod),
             (rf'^{prefix}dlm (\w+)$', self.handle_downloadmod),
+            (rf'^{prefix}setprefix (\S+)$', self.handle_setprefix),
+            (rf'^{prefix}setinfo$', self.handle_setinfo),
+            (rf'^{prefix}setinfo (.+)$', self.handle_setinfo),
+            (rf'^{prefix}mediainfo(?: (.+))?$', self.handle_media_info),
         ]
+        async def handle_info(event):
+            if not await self.is_owner(event):
+                return
+            await event.edit(await self._generate_info_message(), parse_mode='html', link_preview=False)
+        
+        cmd_handlers.append((rf'^{prefix}info$', handle_info))
+
+        for pattern, handler in cmd_handlers:
+            self.manager.client.add_event_handler(
+                handler,
+                events.NewMessage(pattern=pattern, outgoing=True)
+            )
+            
         
         for pattern, handler in cmd_handlers:
             self.manager.client.add_event_handler(
