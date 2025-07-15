@@ -1,5 +1,3 @@
- 
-
 import os
 import sys
 import subprocess 
@@ -361,26 +359,27 @@ class CoreCommands:
             f"🔹 <b>Сессия:</b> <code>{self.manager.session_id}</code>",
             "",
             "⚙️ <b>Основные команды:</b>",
-            f"• <code>{prefix}help</code> - Показать это сообщение",
-            f"• <code>{prefix}ping</code> - Проверка пинга",
-            f"• <code>{prefix}info</code> - Информация о боте",
-            f"• <code>{prefix}update</code> - Обновить бота",
-            f"• <code>{prefix}restart</code> - Перезапустить бота",
-            f"• <code>{prefix}logs</code> - Получить логи",
+            f"• <code>{prefix}help</code>",
+            f"• <code>{prefix}ping</code>",
+            f"• <code>{prefix}info</code>",
+            f"• <code>{prefix}update</code>",
+            f"• <code>{prefix}restart</code>",
+            f"• <code>{prefix}logs</code>",
             "",
             "📦 <b>Управление модулями:</b>",
-            f"• <code>{prefix}lm</code> - Загрузить модуль (ответом на файл)",
-            f"• <code>{prefix}gm [name]</code> - Получить модуль",
-            f"• <code>{prefix}ulm [name]</code> - Удалить модуль",
-            f"• <code>{prefix}rlm [name]</code> - Перезагрузить модуль",
-            f"• <code>{prefix}mlist</code> - Список модулей",
-            f"• <code>{prefix}mfind [query]</code> - Поиск модулей",
-            f"• <code>{prefix}dlm [name]</code> - Скачать модуль",
+            f"• <code>{prefix}lm</code>",
+            f"• <code>{prefix}gm [name]</code>",
+            f"• <code>{prefix}ulm [name]</code>",
+            f"• <code>{prefix}rlm [name]</code>",
+            f"• <code>{prefix}mlist</code>",
+            f"• <code>{prefix}mfind [query]</code>",
+            f"• <code>{prefix}dlm [name]</code>",
+            f"• <code>{prefix}mhelp [name]</code>",
             "",
             "🛠️ <b>Утилиты:</b>",
-            f"• <code>{prefix}tr [lang] [text]</code> - Переводчик",
-            f"• <code>{prefix}calc [expr]</code> - Калькулятор",
-            f"• <code>{prefix}clean</code> - Очистка кэша",
+            f"• <code>{prefix}tr [lang] [text]</code>",
+            f"• <code>{prefix}calc [expr]</code>",
+            f"• <code>{prefix}clean</code>",
             "",
             "🔗 <b>Ссылки:</b>",
             f"• <a href='{self.repo_url}'>Репозиторий</a>",
@@ -393,7 +392,59 @@ class CoreCommands:
                 help_msg.append(f"• <code>{mod_name}</code>")
 
         await event.edit("\n".join(help_msg), parse_mode='html')
+
+    async def handle_module_help(self, event: Message):
+        """Вывод информации о конкретном модуле"""
+        if not await self.is_owner(event):
+            return
+            
+        module_name = event.pattern_match.group(1)
         
+        if module_name not in self.manager.modules:
+            await event.edit(f"❌ Модуль <code>{module_name}</code> не найден", parse_mode='html')
+            return
+            
+        try:
+            module_data = self.manager.modules[module_name]
+            module = module_data['module']
+            
+            desc = getattr(module, '__doc__', 'Без описания').strip()
+            version = getattr(module, 'version', '1.0')
+            commands = getattr(module, 'commands', {})
+            
+            desc = desc.replace("Описание:", "").strip()
+            
+            formatted_commands = []
+            if isinstance(commands, dict):
+                for cmd, cmd_desc in commands.items():
+                    if cmd_desc:
+                        formatted_commands.append(f"• <code>{self.manager.prefix}{cmd}</code> - {cmd_desc}")
+                    else:
+                        formatted_commands.append(f"• <code>{self.manager.prefix}{cmd}</code>")
+            elif isinstance(commands, list):
+                formatted_commands = [f"• <code>{self.manager.prefix}{cmd}</code>" for cmd in commands]
+            
+            info_msg = [
+                f"📦 <b>Модуль {module_name} v{version}</b>",
+                "",
+                f"📝 <b>Описание:</b> {desc}",
+                ""
+            ]
+            
+            if formatted_commands:
+                info_msg.extend([
+                    "⚙️ <b>Доступные команды:</b>",
+                    *formatted_commands,
+                    ""
+                ])
+            
+            info_msg.append(f"🕒 <b>Загружен:</b> {(datetime.now() - module_data['loaded_at']).seconds // 60} минут назад")
+            
+            await event.edit("\n".join(info_msg), parse_mode='html')
+            
+        except Exception as e:
+            await event.edit(f"❌ Ошибка при получении информации о модуле: {str(e)}")
+         
     async def handle_logs(self, event: Message):
         """Отправка логов"""
         if not await self.is_owner(event):
@@ -982,6 +1033,7 @@ class CoreCommands:
             (rf'^{prefix}calc (.+)$', self.handle_calc),
             (rf'^{prefix}restart$', self.restart_bot),
             (rf'^{prefix}logs$', self.handle_logs),
+            (rf'^{prefix}mhelp (\w+)$', self.handle_module_help),
             (rf'^{prefix}mfind (.+)$', self.handle_searchmod),
             (rf'^{prefix}dlm (\w+\.py)$', self.handle_downloadmod),
             (rf'^{prefix}dlm (\w+)$', self.handle_downloadmod),
