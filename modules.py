@@ -381,6 +381,7 @@ class CoreCommands:
     def __init__(self, manager):
         self.manager = manager
         self.repo_url = GITHUB_REPO
+        self.CUSTOM_INFO_FILE = CUSTOM_INFO_FILE
         self.docs_url = DOCS_URL
     
     async def initialize(self):
