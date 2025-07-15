@@ -974,6 +974,15 @@ class CoreCommands:
                 events.NewMessage(pattern=pattern, outgoing=True)
             )
 
+async def check_internet():
+    """Проверка наличия интернет-соединения."""
+    try:
+        # Выполняем команду ping на Google DNS
+        output = subprocess.check_output(['ping', '-c', '1', '8.8.8.8'], stderr=subprocess.DEVNULL)
+        print("🌐 [Интернет] Соединение нормально.")
+    except subprocess.CalledProcessError:
+        print("⚠️ [Предупреждение] Проблемы с интернет-соединением. Соединение может быть ненадежным.")
+
 async def main(client=None):
     """Основная функция запуска юзербота"""
     print("🟢 [Система] Запуск Acroka UserBot...")
@@ -985,7 +994,10 @@ async def main(client=None):
             await client.start()
         
         print("✅ [Система] Юзербот авторизован")
-        
+
+        # Проверка интернет-соединения
+        await check_internet()
+
         # Загрузка префикса
         prefix = DEFAULT_PREFIX
         if os.path.exists(PREFIX_FILE):
