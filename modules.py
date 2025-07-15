@@ -39,36 +39,72 @@ class ModuleFinder:
 
     def _load_modules(self):
         """Загрузить список всех модулей из репозитория."""
-        response = requests.get(self.repo_url)
-        response.raise_for_status()  # Проверяем статус ответа
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        links = soup.find_all('a', class_='js-navigation-open link-gray')
-
-        modules = {}
-        for link in links:
-            module_name = link.get_text()
-            modules[module_name] = self._load_module_description(module_name)
-        
-        return modules
-
-    def _load_module_description(self, module_name):
-        """Загружает описание модуля из файла на GitHub."""
-        raw_url = f"https://raw.githubusercontent.com/theLuni/AcrokaUB/main/{module_name}"
         try:
-            module_content = requests.get(raw_url).text
-            docstring = re.search(r'\"\"\"(.*?)\"\"\"', module_content, re.DOTALL)
-            return docstring.group(1).strip().split('\n')[0] if docstring else "Нет описания"
+            response = requests.get(f"{self.repo_url}/main/")
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            links = soup.find_all('a', class_='js-navigation-open link-gray')
+
+            modules = {}
+            for link in links:
+                if link.get_text().endswith('.py'):
+                    module_name = link.get_text()[:-3]
+                    modules[module_name] = self._load_module_info(module_name)
+            
+            return modules
+        except Exception as e:
+            print(f"Error loading modules: {str(e)}")
+            return {}
+
+    def _load_module_info(self, module_name):
+        """Загружает информацию о модуле."""
+        try:
+            url = f"{RAW_MODS_URL}{module_name}.py"
+            response = requests.get(url)
+            response.raise_for_status()
+            
+            content = response.text
+            info = {
+                'description': "Без описания",
+                'version': "1.0",
+                'keywords': []
+            }
+            
+            # Поиск docstring
+            doc_match = re.search(r'\"\"\"(.*?)\"\"\"', content, re.DOTALL)
+            if doc_match:
+                info['description'] = doc_match.group(1).strip().split('\n')[0]
+                
+            # Поиск ключевых слов
+            kw_match = re.search(r'#\s*keywords?:\s*(.+)', content)
+            if kw_match:
+                info['keywords'] = [kw.strip().lower() for kw in kw_match.group(1).split(',')]
+                
+            # Поиск версии
+            ver_match = re.search(r'#\s*version:\s*([\d.]+)', content)
+            if ver_match:
+                info['version'] = ver_match.group(1)
+                
+            return info
         except Exception:
-            return "Ошибка загрузки описания"
+            return {
+                'description': "Ошибка загрузки информации",
+                'version': "1.0",
+                'keywords': []
+            }
 
     def search_modules(self, search_query):
         """Ищет модули по ключевым словам."""
         search_query = search_query.lower()
-        found_modules = {
-            name: desc for name, desc in self.modules.items() 
-            if search_query in name.lower()
-        }
+        found_modules = {}
+        
+        for name, info in self.modules.items():
+            if (search_query in name.lower() or 
+                any(search_query in kw for kw in info['keywords']) or 
+                search_query in info['description'].lower()):
+                found_modules[name] = info
+                
         return found_modules
         
 class ModuleManager:
@@ -78,35 +114,42 @@ class ModuleManager:
         self.prefix = DEFAULT_PREFIX
         self.start_time = datetime.now()
         self.session_id = str(uuid.uuid4())[:8]
-        self.version = self._get_git_version() or "1.0.0"
-        self.last_update_time = self._get_last_commit_date() or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.version = self._get_version() or "1.0.0"
+        self.last_update_time = self._get_last_update_time() or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         os.makedirs(MODS_DIR, exist_ok=True)
         os.makedirs(BACKUP_DIR, exist_ok=True)
         self._setup_logging()
 
-    def _get_git_version(self):
-        """Получаем версию из git тегов"""
+    def _get_version(self):
+        """Получаем версию бота"""
         try:
-            if not os.path.exists('.git'):
-                return None
-                
-            process = os.popen('git describe --tags --abbrev=0 2>/dev/null')
-            version = process.read().strip()
-            process.close()
-            return version if version else None
+            # Сначала пробуем получить из git
+            if os.path.exists('.git'):
+                process = os.popen('git describe --tags --abbrev=0 2>/dev/null')
+                version = process.read().strip()
+                process.close()
+                if version:
+                    return version
+            
+            # Затем пробуем получить из файла
+            if os.path.exists('version.txt'):
+                with open('version.txt', 'r') as f:
+                    return f.read().strip()
+                    
+            return None
         except:
             return None
 
-    def _get_last_commit_date(self):
-        """Получаем дату последнего коммита"""
+    def _get_last_update_time(self):
+        """Получаем дату последнего обновления"""
         try:
-            if not os.path.exists('.git'):
-                return None
+            if os.path.exists('.git'):
+                process = os.popen('git log -1 --format=%cd --date=format:"%Y-%m-%d %H:%M:%S"')
+                date = process.read().strip()
+                process.close()
+                return date
                 
-            process = os.popen('git log -1 --format=%cd --date=format:"%Y-%m-%d %H:%M:%S"')
-            date = process.read().strip()
-            process.close()
-            return date if date else None
+            return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         except:
             return None
 
@@ -313,11 +356,6 @@ class CoreCommands:
         self.owner_id = None
         self.repo_url = GITHUB_REPO
         self.docs_url = DOCS_URL
-        self.connected_services = {
-            'Telegram API': True,
-            'Translator API': True,
-            'Git': os.path.exists('.git')
-        }
     
     async def initialize(self):
         me = await self.manager.client.get_me()
@@ -363,7 +401,9 @@ class CoreCommands:
         prefix = self.manager.prefix
         
         help_msg = [
-            f"✨ <b>Acroka UserBot Help (Session ID: {self.manager.session_id})</b> ✨.",
+            f"✨ <b>Acroka UserBot Help (v{self.manager.version})</b> ✨",
+            f"🔹 <b>Префикс:</b> <code>{prefix}</code>",
+            f"🔹 <b>Сессия:</b> <code>{self.manager.session_id}</code>",
             "",
             "⚙️ <b>Основные команды:</b>",
             f"• <code>{prefix}help</code> - Показать это сообщение",
@@ -371,19 +411,25 @@ class CoreCommands:
             f"• <code>{prefix}info</code> - Информация о боте",
             f"• <code>{prefix}update</code> - Обновить бота",
             f"• <code>{prefix}restart</code> - Перезапустить бота",
+            f"• <code>{prefix}logs</code> - Получить логи",
             "",
             "📦 <b>Управление модулями:</b>",
-            f"• <code>{prefix}lm</code> - Загрузить модуль",
+            f"• <code>{prefix}lm</code> - Загрузить модуль (ответом на файл)",
             f"• <code>{prefix}gm [name]</code> - Получить модуль",
             f"• <code>{prefix}ulm [name]</code> - Удалить модуль",
             f"• <code>{prefix}rlm [name]</code> - Перезагрузить модуль",
             f"• <code>{prefix}mlist</code> - Список модулей",
+            f"• <code>{prefix}mfind [query]</code> - Поиск модулей",
+            f"• <code>{prefix}dlm [name]</code> - Скачать модуль",
             "",
             "🛠️ <b>Утилиты:</b>",
-            f"• <code>{prefix}tr [lang]</code> - Переводчик",
+            f"• <code>{prefix}tr [lang] [text]</code> - Переводчик",
             f"• <code>{prefix}calc [expr]</code> - Калькулятор",
             f"• <code>{prefix}clean</code> - Очистка кэша",
-            f"• <code>{prefix}logs</code> - Получить логи"
+            "",
+            "🔗 <b>Ссылки:</b>",
+            f"• <a href='{self.repo_url}'>Репозиторий</a>",
+            f"• <a href='{self.docs_url}'>Документация</a>"
         ]
         
         if self.manager.modules:
@@ -392,7 +438,7 @@ class CoreCommands:
                 help_msg.append(f"• <code>{mod_name}</code>")
 
         await event.edit("\n".join(help_msg), parse_mode='html')
-
+        
     async def handle_logs(self, event: Message):
         """Отправка логов"""
         if not await self.is_owner(event):
@@ -421,44 +467,29 @@ class CoreCommands:
         sys_info = self.get_system_info()
         
         info_msg = [
-            f"🤖 <b>Acroka UserBot Info (Session ID: {self.manager.session_id})</b>",
+            f"🤖 <b>Acroka UserBot v{self.manager.version}</b>",
+            f"🔹 <b>Сессия:</b> <code>{self.manager.session_id}</code>",
+            f"🔹 <b>Обновлено:</b> <code>{self.manager.last_update_time}</code>",
             "",
             f"👤 <b>Владелец:</b> <a href='tg://user?id={me.id}'>{me.first_name}</a>",
             f"🆔 <b>ID:</b> <code>{me.id}</code>",
             f"⏱ <b>Аптайм:</b> {str(timedelta(seconds=uptime.seconds)).split('.')[0]}",
             f"📦 <b>Модулей:</b> {len(self.manager.modules)}",
-            f"🔹 <b>Префикс:</b> <code>{self.manager.prefix}</code>",
             "",
-            f"🔄 <b>Версия:</b> <code>{self.manager.version}</code>",
-            f"📅 <b>Обновлено:</b> <code>{self.manager.last_update_time}</code>",
-            ""
+            "⚙️ <b>Система:</b>",
+            f"• <b>ОС:</b> {platform.system()} {platform.release()}",
+            f"• <b>Python:</b> {platform.python_version()}",
+            f"• <b>Telethon:</b> {telethon.__version__}",
+            "",
+            "💻 <b>Ресурсы:</b>",
+            f"• <b>CPU:</b> {sys_info['cpu']['usage']}% ({sys_info['cpu']['cores']} ядер)",
+            f"• <b>RAM:</b> {sys_info['memory']['percent']}% ({sys_info['memory']['used']}/{sys_info['memory']['total']} MB)",
+            "",
+            f"📂 <b>Репозиторий:</b> <code>{self.repo_url}</code>"
         ]
-        
-        if sys_info:
-            info_msg.extend([
-                "⚙️ <b>Системная информация:</b>",
-                f"• <b>ОС:</b> {platform.system()} {platform.release()}",
-                f"• <b>Python:</b> {platform.python_version()}",
-                f"• <b>Telethon:</b> {telethon.__version__}",
-                "",
-                "💾 <b>Память:</b>",
-                f"• <b>Использовано:</b> {sys_info['memory']['used']} MB / {sys_info['memory']['total']} MB ({sys_info['memory']['percent']}%)",
-                "",
-                "🖥 <b>Процессор:</b>",
-                f"• <b>Ядер:</b> {sys_info['cpu']['cores']}",
-                f"• <b>Нагрузка:</b> {sys_info['cpu']['usage']}%",
-                "",
-                f"⏳ <b>Время работы системы:</b> {sys_info['uptime']}",
-                ""
-            ])
-        
-        info_msg.extend([
-            f"📂 <b>Репозиторий:</b> <code>{self.repo_url}</code>",
-            f"📝 <b>Документация:</b> <code>{self.docs_url}</code>"
-        ])
 
-        await event.edit("\n".join([line for line in info_msg if line]), parse_mode='html', link_preview=False)
-
+        await event.edit("\n".join(info_msg), parse_mode='html', link_preview=False)
+        
     async def handle_reloadmod(self, event: Message):
         """Перезагрузка модуля"""
         if not await self.is_owner(event):
@@ -687,8 +718,7 @@ class CoreCommands:
             
         try:
             await event.edit("🔍 Поиск модулей...")
-            repo_url = "https://github.com/theLuni/AcrokaUB-Modules"
-            finder = ModuleFinder(repo_url)
+            finder = ModuleFinder(MODS_REPO)
             found_modules = finder.search_modules(search_query)
 
             if not found_modules:
@@ -696,27 +726,28 @@ class CoreCommands:
                 return
 
             results = []
-            for module_name, description in found_modules.items():
+            for module_name, info in found_modules.items():
+                keywords = ", ".join(info['keywords']) if info['keywords'] else "нет"
                 results.append(
-                    f"📦 <b>{module_name[:-3]}</b>\n"
-                    f"📝 <i>{description[:100]}...</i>\n"
-                    f"🔗 <code>.dlm {module_name}</code>\n"
+                    f"📦 <b>{module_name}</b> (v{info['version']})\n"
+                    f"📝 <i>{info['description'][:100]}</i>\n"
+                    f"🔎 <b>Ключевые слова:</b> {keywords}\n"
+                    f"⬇️ <code>{self.manager.prefix}dlm {module_name}.py</code>\n"
                 )
 
             message = [
                 f"🔍 <b>Результаты поиска по запросу '{search_query}':</b>",
-                f"📂 <b>Репозиторий:</b> <code>{repo_url}</code>",
+                f"📂 Найдено модулей: {len(found_modules)}",
                 "",
                 *results,
                 "",
-                f"ℹ️ Найдено модулей: {len(found_modules)}",
-                f"ℹ️ Для установки используйте команду <code>.dlm имя_модуля.py</code>"
+                f"ℹ️ Для установки используйте команду <code>{self.manager.prefix}dlm имя_модуля.py</code>"
             ]
             
             await event.edit("\n".join(message), parse_mode='html')
 
         except Exception as e:
-            await event.edit(f"❌ Ошибка поиска: {str(e)}")    
+            await event.edit(f"❌ Ошибка поиска: {str(e)}")
             
     async def handle_downloadmod(self, event: Message):
         if not await self.is_owner(event):
@@ -963,7 +994,7 @@ class CoreCommands:
             (rf'^{prefix}calc (.+)$', self.handle_calc),
             (rf'^{prefix}restart$', self.restart_bot),
             (rf'^{prefix}logs$', self.handle_logs),
-            (rf'^{prefix}searchmod (.+)$', self.handle_searchmod),
+            (rf'^{prefix}mfind (.+)$', self.handle_searchmod),
             (rf'^{prefix}dlm (\w+\.py)$', self.handle_downloadmod),
             (rf'^{prefix}dlm (\w+)$', self.handle_downloadmod),
         ]
@@ -1000,9 +1031,6 @@ async def main(client=None):
         
         print("✅ [Система] Юзербот авторизован")
 
-        # Проверка интернет-соединения
-        await check_internet_connection()
-
         # Загрузка префикса
         prefix = DEFAULT_PREFIX
         if os.path.exists(PREFIX_FILE):
@@ -1021,7 +1049,7 @@ async def main(client=None):
         # Загрузка всех модулей
         await manager.load_all_modules()
 
-        print(f"🟢 [Система] Юзербот запущен | Префикс: '{prefix}'")
+        print(f"🟢 [Система] Юзербот запущен | Префикс: '{prefix}' | Версия: {manager.version}")
         print("🔹 Отправьте .help для списка команд")
         
         # Основной цикл
@@ -1037,3 +1065,4 @@ async def main(client=None):
 
 if __name__ == '__main__':
     asyncio.run(main())
+
