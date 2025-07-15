@@ -1001,7 +1001,7 @@ async def main(client=None):
         print("✅ [Система] Юзербот авторизован")
 
         # Проверка интернет-соединения
-        await check_internet()
+        await check_internet_connection()
 
         # Загрузка префикса
         prefix = DEFAULT_PREFIX
