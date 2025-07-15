@@ -480,7 +480,54 @@ class CoreCommands:
             
         except Exception as e:
             await event.edit(f"❌ Ошибка при получении информации о модуле: {str(e)}")
+
+    async def handle_getmod(self, event: Message):
+        """Отправить файл модуля в чат"""
+        if not await self.is_owner(event):
+            return
             
+        module_name = event.pattern_match.group(1)
+        
+        if module_name not in self.manager.modules:
+            await event.edit(
+                "❌ <b>Модуль не найден</b>\n\n"
+                f"Модуль <code>{module_name}</code> не загружен.",
+                parse_mode='html'
+            )
+            return
+            
+        try:
+            module_data = self.manager.modules[module_name]
+            module = module_data['module']
+            
+            desc = getattr(module, 'doc', 'Без описания').strip()
+            version = getattr(module, 'version', '1.0')
+            commands = getattr(module, 'commands', [])
+            
+            info_msg = [
+                f"📦 <b>Модуль {module_name} v{version}</b>",
+                f"📝 <b>Описание:</b> {desc}",
+                "",
+                "🛠 <b>Команды:</b>",
+                *[f"• <code>{self.manager.prefix}{cmd}</code>" for cmd in commands],
+                "",
+                "⬇️ <i>Файл модуля:</i>"
+            ]
+            
+            await event.delete()
+            await self.manager.client.send_message(
+                event.chat_id,
+                "\n".join(info_msg),
+                parse_mode='html',
+                file=module_data['path']
+            )
+            
+        except Exception as e:
+            await event.edit(
+                "❌ <b>Ошибка получения модуля</b>\n\n"
+                f"<code>{str(e)}</code>",
+                parse_mode='html'
+                           )    
     
     async def handle_logs(self, event: Message):
         """Отправка логов"""
