@@ -215,6 +215,12 @@ class ModuleManager:
         """Получение информации о системе"""
         try:
             mem = psutil.virtual_memory()
+            cpu_usage = 0
+            try:
+                cpu_usage = psutil.cpu_percent()
+            except:
+                pass
+                
             return {
                 'memory': {
                     'used': round(mem.used / 1024 / 1024, 1),
@@ -223,13 +229,24 @@ class ModuleManager:
                 },
                 'cpu': {
                     'cores': psutil.cpu_count(),
-                    'usage': psutil.cpu_percent()
+                    'usage': cpu_usage
                 },
                 'uptime': str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
             }
         except Exception as e:
             self.logger.error(f"Error getting system info: {str(e)}")
-            return {}
+            return {
+                'memory': {
+                    'used': 'N/A',
+                    'total': 'N/A',
+                    'percent': 'N/A'
+                },
+                'cpu': {
+                    'cores': 'N/A',
+                    'usage': 'N/A'
+                },
+                'uptime': 'N/A'
+            }
     
     async def _check_dependencies(self, module_path: str) -> bool:
         """Проверка и установка зависимостей модуля"""
