@@ -210,7 +210,25 @@ class ModuleManager:
             if os.path.exists(module_path):
                 os.remove(module_path)
             return False
-            
+    def get_system_info(self):
+        """Получение информации о системе"""
+        try:
+            mem = psutil.virtual_memory()
+            return {
+                'memory': {
+                    'used': round(mem.used / 1024 / 1024, 1),
+                    'total': round(mem.total / 1024 / 1024, 1),
+                    'percent': mem.percent
+                },
+                'cpu': {
+                    'cores': psutil.cpu_count(),
+                    'usage': psutil.cpu_percent()
+                },
+                'uptime': str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
+            }
+        except Exception as e:
+            self.manager.logger.error(f"Error getting system info: {str(e)}")
+            return {}            
     async def _check_dependencies(self, module_path: str) -> bool:
         """Проверка и установка зависимостей модуля"""
         try:
