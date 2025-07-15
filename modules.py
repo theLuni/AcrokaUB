@@ -35,75 +35,41 @@ LOG_FILE = 'userbot.log'
 class ModuleFinder:
     def __init__(self, repo_url):
         self.repo_url = repo_url
-        self.modules = self._load_modules()
+        self.modules_db_url = f"{RAW_MODS_URL}modules_db.json"
+        self.modules = self._load_modules_db()
 
-    def _load_modules(self):
-        """Загрузить список всех модулей из репозитория."""
+    def _load_modules_db(self):
+        """Загружает базу данных модулей из JSON-файла"""
         try:
-            response = requests.get(f"{self.repo_url}/main/")
+            response = requests.get(self.modules_db_url)
             response.raise_for_status()
-            
-            soup = BeautifulSoup(response.text, 'html.parser')
-            links = soup.find_all('a', class_='js-navigation-open link-gray')
-
-            modules = {}
-            for link in links:
-                if link.get_text().endswith('.py'):
-                    module_name = link.get_text()[:-3]
-                    modules[module_name] = self._load_module_info(module_name)
-            
-            return modules
+            return response.json()
         except Exception as e:
-            print(f"Error loading modules: {str(e)}")
+            print(f"Error loading modules database: {str(e)}")
             return {}
 
-    def _load_module_info(self, module_name):
-        """Загружает информацию о модуле."""
-        try:
-            url = f"{RAW_MODS_URL}{module_name}.py"
-            response = requests.get(url)
-            response.raise_for_status()
-            
-            content = response.text
-            info = {
-                'description': "Без описания",
-                'version': "1.0",
-                'keywords': []
-            }
-            
-            # Поиск docstring
-            doc_match = re.search(r'\"\"\"(.*?)\"\"\"', content, re.DOTALL)
-            if doc_match:
-                info['description'] = doc_match.group(1).strip().split('\n')[0]
-                
-            # Поиск ключевых слов
-            kw_match = re.search(r'#\s*keywords?:\s*(.+)', content)
-            if kw_match:
-                info['keywords'] = [kw.strip().lower() for kw in kw_match.group(1).split(',')]
-                
-            # Поиск версии
-            ver_match = re.search(r'#\s*version:\s*([\d.]+)', content)
-            if ver_match:
-                info['version'] = ver_match.group(1)
-                
-            return info
-        except Exception:
-            return {
-                'description': "Ошибка загрузки информации",
-                'version': "1.0",
-                'keywords': []
-            }
-
     def search_modules(self, search_query):
-        """Ищет модули по ключевым словам."""
+        """Ищет модули по ключевым словам в JSON-базе"""
         search_query = search_query.lower()
         found_modules = {}
         
-        for name, info in self.modules.items():
-            if (search_query in name.lower() or 
-                any(search_query in kw for kw in info['keywords']) or 
-                search_query in info['description'].lower()):
-                found_modules[name] = info
+        for module_name, module_info in self.modules.items():
+            # Ищем в названии модуля
+            name_match = search_query in module_name.lower()
+            
+            # Ищем в описании
+            desc_match = search_query in module_info.get('description', '').lower()
+            
+            # Ищем в ключевых словах
+            keywords = [kw.lower() for kw in module_info.get('keywords', [])]
+            kw_match = search_query in keywords
+            
+            # Ищем в командах
+            commands = [cmd.lower() for cmd in module_info.get('commands', [])]
+            cmd_match = search_query in commands
+            
+            if name_match or desc_match or kw_match or cmd_match:
+                found_modules[module_name] = module_info
                 
         return found_modules
         
