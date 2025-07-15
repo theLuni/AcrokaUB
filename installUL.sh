@@ -113,7 +113,6 @@ success_message() {
 
 main() {
     show_logo
-    check_internet
     install_packages
     clone_repo
     install_dependencies
