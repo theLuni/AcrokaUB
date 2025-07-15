@@ -648,16 +648,23 @@ class CoreCommands:
         try:
             await event.edit("🔍 Поиск модулей...")
             
-            # Получаем список файлов из репозитория
-            api_url = "https://api.github.com/repos/theLuni/AcrokaUB-Modules/main/"
-            headers = {'Accept': 'application/vnd.github.v3+json'}
-            response = requests.get(api_url, headers=headers)
-            response.raise_for_status()
+            # Получаем список файлов из папки
+            repo_url = "https://github.com/theLuni/AcrokaUB-Modules"
+            content_url = f"{repo_url}/contents"  # URL для получения содержимого
+            response = requests.get(content_url)
+            response.raise_for_status()  # Вызовет исключение, если статус код не 200
             
-            modules = [
-                item for item in response.json()
-                if item['name'].endswith('.py') and search_query.lower() in item['name'].lower()
-            ]
+            # Поскольку это обычный HTML, используя BeautifulSoup для парсинга
+            from bs4 import BeautifulSoup
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            links = soup.find_all('a', class_='js-navigation-open link-gray')
+            
+            modules = []
+            for link in links:
+                module_name = link.get_text()
+                if module_name.endswith('.py') and search_query.lower() in module_name.lower():
+                    modules.append(module_name)
             
             if not modules:
                 await event.edit(f"🔍 По запросу '{search_query}' ничего не найдено")
@@ -665,26 +672,26 @@ class CoreCommands:
                 
             results = []
             for module in modules[:10]:  # Ограничиваем результатами 10
-                raw_url = f"{RAW_MODS_URL}{module['name']}"
+                raw_url = f"https://raw.githubusercontent.com/theLuni/AcrokaUB-Modules/main/{module}"
                 try:
                     module_content = requests.get(raw_url).text
                     docstring = re.search(r'\"\"\"(.*?)\"\"\"', module_content, re.DOTALL)
                     description = docstring.group(1).strip().split('\n')[0] if docstring else "Нет описания"
                     
                     results.append(
-                        f"📦 <b>{module['name'][:-3]}</b>\n"
+                        f"📦 <b>{module[:-3]}</b>\n"
                         f"📝 <i>{description[:100]}...</i>\n"
-                        f"🔗 <code>.dlm {module['name']}</code>\n"
+                        f"🔗 <code>.dlm {module}</code>\n"
                     )
                 except Exception as e:
                     results.append(
-                        f"📦 <b>{module['name'][:-3]}</b>\n"
-                        f"🔗 <code>.dlm {module['name']}</code>\n"
+                        f"📦 <b>{module[:-3]}</b>\n"
+                        f"🔗 <code>.dlm {module}</code>\n"
                     )
             
             message = [
                 f"🔍 <b>Результаты поиска по запросу '{search_query}':</b>",
-                f"📂 <b>Репозиторий:</b> <code>{MODS_REPO}</code>",
+                f"📂 <b>Репозиторий:</b> <code>{repo_url}</code>",
                 "",
                 *results,
                 "",
@@ -696,7 +703,7 @@ class CoreCommands:
             
         except Exception as e:
             await event.edit(f"❌ Ошибка поиска: {str(e)}")
-
+            
     async def handle_downloadmod(self, event: Message):
         if not await self.is_owner(event):
             return
