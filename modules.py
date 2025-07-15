@@ -691,7 +691,26 @@ class CoreCommands:
             'loaded_at': module_data['loaded_at'],
             'load_count': module_data.get('load_count', 1)
         }
-
+    def get_system_info(self):
+        """Получение информации о системе"""
+        try:
+            mem = psutil.virtual_memory()
+            return {
+                'memory': {
+                    'used': round(mem.used / 1024 / 1024, 1),
+                    'total': round(mem.total / 1024 / 1024, 1),
+                    'percent': mem.percent
+                },
+                'cpu': {
+                    'cores': psutil.cpu_count(),
+                    'usage': psutil.cpu_percent()
+                },
+                'uptime': str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting system info: {str(e)}")
+            return {}
+            
     async def handle_help(self, event: Message) -> None:
         """Основное сообщение помощи"""
         if not await self.is_owner(event):
