@@ -19,7 +19,7 @@ from telethon.tl.types import Message
 from config import API_ID, API_HASH
 import requests
 from googletrans import Translator
-
+import json
 # Константы
 MODS_DIR = 'source/mods/'
 PREFIX_FILE = 'source/prefix.txt'
