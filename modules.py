@@ -32,6 +32,45 @@ DOCS_URL = "https://github.com/theLuni/AcrokaUB/wiki"
 BACKUP_DIR = 'source/backups/'
 LOG_FILE = 'userbot.log'
 
+class ModuleFinder:
+    def __init__(self, repo_url):
+        self.repo_url = repo_url
+        self.modules = self._load_modules()
+
+    def _load_modules(self):
+        """Загрузить список всех модулей из репозитория."""
+        response = requests.get(self.repo_url)
+        response.raise_for_status()  # Проверяем статус ответа
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        links = soup.find_all('a', class_='js-navigation-open link-gray')
+
+        modules = {}
+        for link in links:
+            module_name = link.get_text()
+            modules[module_name] = self._load_module_description(module_name)
+        
+        return modules
+
+    def _load_module_description(self, module_name):
+        """Загружает описание модуля из файла на GitHub."""
+        raw_url = f"https://raw.githubusercontent.com/theLuni/AcrokaUB/main/{module_name}"
+        try:
+            module_content = requests.get(raw_url).text
+            docstring = re.search(r'\"\"\"(.*?)\"\"\"', module_content, re.DOTALL)
+            return docstring.group(1).strip().split('\n')[0] if docstring else "Нет описания"
+        except Exception:
+            return "Ошибка загрузки описания"
+
+    def search_modules(self, search_query):
+        """Ищет модули по ключевым словам."""
+        search_query = search_query.lower()
+        found_modules = {
+            name: desc for name, desc in self.modules.items() 
+            if search_query in name.lower()
+        }
+        return found_modules
+        
 class ModuleManager:
     def __init__(self, client):
         self.client = client
@@ -636,7 +675,7 @@ class CoreCommands:
             await event.edit(f"❌ Ошибка: {str(e)}")
             if os.path.exists(path):
                 os.remove(path)
-                
+
     async def handle_searchmod(self, event: Message):
         if not await self.is_owner(event):
             return
@@ -648,58 +687,36 @@ class CoreCommands:
             
         try:
             await event.edit("🔍 Поиск модулей...")
-            
             repo_url = "https://github.com/theLuni/AcrokaUB-Modules"
-            response = requests.get(repo_url)
-            response.raise_for_status()  # Вызовет исключение, если статус код не 200
-            
-            # Парсим страницу репозитория
-            soup = BeautifulSoup(response.text, 'html.parser')
-            links = soup.find_all('a', class_='js-navigation-open link-gray')
-            
-            modules = []
-            for link in links:
-                module_name = link.get_text()
-                if module_name.endswith('.py') and search_query.lower() in module_name.lower():
-                    modules.append(module_name)
-            
-            if not modules:
+            finder = ModuleFinder(repo_url)
+            found_modules = finder.search_modules(search_query)
+
+            if not found_modules:
                 await event.edit(f"🔍 По запросу '{search_query}' ничего не найдено")
                 return
-                
+
             results = []
-            for module in modules[:10]:  # Ограничиваем результатами 10
-                raw_url = f"https://raw.githubusercontent.com/theLuni/AcrokaUB-Modules/main/{module}"
-                try:
-                    module_content = requests.get(raw_url).text
-                    docstring = re.search(r'\"\"\"(.*?)\"\"\"', module_content, re.DOTALL)
-                    description = docstring.group(1).strip().split('\n')[0] if docstring else "Нет описания"
-                    
-                    results.append(
-                        f"📦 <b>{module[:-3]}</b>\n"
-                        f"📝 <i>{description[:100]}...</i>\n"
-                        f"🔗 <code>.dlm {module}</code>\n"
-                    )
-                except Exception as e:
-                    results.append(
-                        f"📦 <b>{module[:-3]}</b>\n"
-                        f"🔗 <code>.dlm {module}</code>\n"
-                    )
-            
+            for module_name, description in found_modules.items():
+                results.append(
+                    f"📦 <b>{module_name[:-3]}</b>\n"
+                    f"📝 <i>{description[:100]}...</i>\n"
+                    f"🔗 <code>.dlm {module_name}</code>\n"
+                )
+
             message = [
                 f"🔍 <b>Результаты поиска по запросу '{search_query}':</b>",
                 f"📂 <b>Репозиторий:</b> <code>{repo_url}</code>",
                 "",
                 *results,
                 "",
-                f"ℹ️ Всего найдено: {len(modules)}",
+                f"ℹ️ Найдено модулей: {len(found_modules)}",
                 f"ℹ️ Для установки используйте команду <code>.dlm имя_модуля.py</code>"
             ]
             
             await event.edit("\n".join(message), parse_mode='html')
-            
+
         except Exception as e:
-            await event.edit(f"❌ Ошибка поиска: {str(e)}")
+            await event.edit(f"❌ Ошибка поиска: {str(e)}")    
             
     async def handle_downloadmod(self, event: Message):
         if not await self.is_owner(event):
