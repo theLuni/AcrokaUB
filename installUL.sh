@@ -23,15 +23,6 @@ show_logo() {
     echo
 }
 
-check_internet() {
-    echo -e "${YELLOW}[*] Проверка интернет-соединения...${NC}"
-    if ! ping -c 1 google.com >/dev/null 2>&1; then
-        echo -e "${RED}[✗] Нет интернет-соединения!${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}[✓] Интернет подключен${NC}"
-}
-
 install_packages() {
     echo -e "${YELLOW}[*] Установка необходимых пакетов...${NC}"
     sudo apt update -y && sudo apt install -y git python3 python3-pip tmux || {
