@@ -1,93 +1,5 @@
-import os
-import sys
-import subprocess 
-import importlib
-import asyncio
-import re
-import shutil
-from bs4 import BeautifulSoup
-import traceback
-import platform
-import telethon
-import psutil
-import socket
-import uuid
-from datetime import datetime, timedelta
-from telethon import TelegramClient, events
-from telethon.tl.types import Message
-from config import API_ID, API_HASH
-import requests
-from googletrans import Translator
+ 
 
-# Константы
-MODS_DIR = 'source/mods/'
-PREFIX_FILE = 'source/prefix.txt'
-DEFAULT_PREFIX = '.'
-LOADED_MODS_FILE = '.loaded_mods'
-SESSION_FILE = 'userbot_session'
-GITHUB_REPO = "https://github.com/theLuni/AcrokaUB"
-MODS_REPO = "https://github.com/theLuni/AcrokaUB-Modules"
-RAW_MODS_URL = "https://raw.githubusercontent.com/theLuni/AcrokaUB-Modules/main/"
-DOCS_URL = "https://github.com/theLuni/AcrokaUB/wiki"
-BACKUP_DIR = 'source/backups/'
-LOG_FILE = 'userbot.log'
-
-class ModuleFinder:
-    def __init__(self, repo_url):
-        self.repo_url = repo_url
-        self.modules_db_url = f"{RAW_MODS_URL}modules_db.json"
-        self.modules = self._load_modules_db()
-
-    def _load_modules_db(self):
-        """Загружает базу данных модулей из JSON-файла"""
-        try:
-            response = requests.get(self.modules_db_url)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            print(f"Error loading modules database: {str(e)}")
-            return {}
-
-    def search_modules(self, search_query):
-        """Ищет модули по ключевым словам в JSON-базе"""
-        search_query = search_query.lower()
-        found_modules = {}
-        
-        for module_name, module_info in self.modules.items():
-            # Ищем в названии модуля
-            name_match = search_query in module_name.lower()
-            
-            # Ищем в описании
-            desc_match = search_query in module_info.get('description', '').lower()
-            
-            # Ищем в ключевых словах
-            keywords = [kw.lower() for kw in module_info.get('keywords', [])]
-            kw_match = search_query in keywords
-            
-            # Ищем в командах
-            commands = [cmd.lower() for cmd in module_info.get('commands', [])]
-            cmd_match = search_query in commands
-            
-            if name_match or desc_match or kw_match or cmd_match:
-                found_modules[module_name] = module_info
-                
-        return found_modules
-        
-class ModuleManager:
-    def __init__(self, client):
-        self.client = client
-        self.modules = {}
-        self.prefix = DEFAULT_PREFIX
-        self.start_time = datetime.now()
-        self.session_id = str(uuid.uuid4())[:8]
-        self.version = self._get_version() or "1.0.0"
-        self.last_update_time = self._get_last_update_time() or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        os.makedirs(MODS_DIR, exist_ok=True)
-        os.makedirs(BACKUP_DIR, exist_ok=True)
-        self._setup_logging()
-
-    def _get_version(self):
-        """Получаем версию бота"""
 import os
 import sys
 import subprocess 
@@ -817,8 +729,7 @@ class CoreCommands:
                 f"📂 Найдено модулей: {len(found_modules)}",
                 "",
                 *results,
-                "",
-                f"ℹ️ Для установки используйте команду <code>{self.manager.prefix}dlm имя_модуля.py</code>"
+                ""
             ]
             
             await event.edit("\n".join(message), parse_mode='html')
