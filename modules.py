@@ -32,6 +32,28 @@ RAW_MODS_URL = "https://raw.githubusercontent.com/theLuni/AcrokaUB-Modules/main/
 DOCS_URL = "https://github.com/theLuni/AcrokaUB/wiki"
 BACKUP_DIR = 'source/backups/'
 LOG_FILE = 'userbot.log'
+# constants.py
+CUSTOM_INFO_FILE = 'source/custom_info.json'
+
+DEFAULT_INFO_TEMPLATE = """🤖 <b>Acroka UserBot v{version}</b>
+🔹 <b>Сессия:</b> <code>{session_id}</code>
+🔹 <b>Обновлено:</b> <code>{last_update_time}</code>
+
+👤 <b>Владелец:</b> <a href='tg://user?id={owner_id}'>{owner_name}</a>
+🆔 <b>ID:</b> <code>{owner_id}</code>
+⏱ <b>Аптайм:</b> {uptime}
+📦 <b>Модулей:</b> {modules_count}
+
+⚙️ <b>Система:</b>
+• <b>ОС:</b> {os_info}
+• <b>Python:</b> {python_version}
+• <b>Telethon:</b> {telethon_version}
+
+💻 <b>Ресурсы:</b>
+• <b>CPU:</b> {cpu_usage}% ({cpu_cores} ядер)
+• <b>RAM:</b> {ram_percent}% ({ram_used}/{ram_total} MB)
+
+📂 <b>Репозиторий:</b> <code>{repo_url}</code>"""
 
 class ModuleFinder:
     def __init__(self, repo_url):
@@ -347,6 +369,141 @@ class CoreCommands:
         except:
             pass
         return False
+
+    async def handle_setprefix(self, event: Message):
+        """Установка нового префикса"""
+        if not await self.is_owner(event):
+            return
+            
+        new_prefix = event.pattern_match.group(1)
+        if not new_prefix or len(new_prefix) > 3:
+            await event.edit("❌ Укажите новый префикс (1-3 символа)")
+            return
+            
+        self.manager.prefix = new_prefix
+        with open(PREFIX_FILE, 'w') as f:
+            f.write(new_prefix)
+            
+        await event.edit(f"✅ Префикс изменен на: <code>{new_prefix}</code>", parse_mode='html')
+        await self.manager.save_loaded_modules()
+        await self.restart_bot()
+
+    async def handle_setinfo(self, event: Message):
+        """Установка кастомного текста для .info"""
+        if not await self.is_owner(event):
+            return
+            
+        template = event.pattern_match.group(1)
+        
+        if not template:
+            # Показать текущий шаблон
+            try:
+                with open(CUSTOM_INFO_FILE, 'r') as f:
+                    current_template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
+            except:
+                current_template = DEFAULT_INFO_TEMPLATE
+                
+            await event.edit(
+                f"ℹ️ <b>Текущий шаблон .info:</b>\n\n"
+                f"<code>{current_template}</code>\n\n"
+                f"Доступные переменные: version, session_id, last_update_time, "
+                f"owner_id, owner_name, uptime, modules_count, os_info, python_version, "
+                f"telethon_version, cpu_usage, cpu_cores, ram_percent, ram_used, "
+                f"ram_total, repo_url",
+                parse_mode='html'
+            )
+            return
+            
+        try:
+            data = {'template': template}
+            with open(CUSTOM_INFO_FILE, 'w') as f:
+                json.dump(data, f)
+                
+            await event.edit("✅ Шаблон .info успешно обновлен!")
+        except Exception as e:
+            await event.edit(f"❌ Ошибка: {str(e)}")
+
+    async def handle_media_info(self, event: Message):
+        """Команда для загрузки медиа с текстом"""
+        if not await self.is_owner(event):
+            return
+            
+        if not event.is_reply:
+            await event.edit("❌ Ответьте на сообщение с медиа")
+            return
+            
+        reply = await event.get_reply_message()
+        if not (reply.photo or reply.video or reply.document):
+            await event.edit("❌ Сообщение должно содержать фото, видео или документ")
+            return
+            
+        caption = event.pattern_match.group(1)
+        if not caption:
+            caption = ""
+            
+        try:
+            media = await reply.download_media(file='temp_download')
+            
+            # Получаем информацию о системе
+            info_msg = await self._generate_info_message()
+            
+            # Отправляем медиа с текстом
+            if reply.photo:
+                await event.delete()
+                await self.manager.client.send_file(
+                    event.chat_id,
+                    media,
+                    caption=f"{caption}\n\n{info_msg}" if caption else info_msg,
+                    parse_mode='html'
+                )
+            elif reply.video or reply.document:
+                await event.delete()
+                await self.manager.client.send_file(
+                    event.chat_id,
+                    media,
+                    caption=f"{caption}\n\n{info_msg}" if caption else info_msg,
+                    parse_mode='html',
+                    supports_streaming=True
+                )
+                
+            os.remove(media)
+        except Exception as e:
+            await event.edit(f"❌ Ошибка: {str(e)}")
+            if os.path.exists(media):
+                os.remove(media)
+
+    async def _generate_info_message(self):
+        """Генерация сообщения .info с учетом кастомного шаблона"""
+        me = await self.manager.client.get_me()
+        uptime = datetime.now() - self.manager.start_time
+        sys_info = self.manager.get_system_info()
+        
+        try:
+            with open(CUSTOM_INFO_FILE, 'r') as f:
+                template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
+        except:
+            template = DEFAULT_INFO_TEMPLATE
+        
+        info_data = {
+            'version': self.manager.version,
+            'session_id': self.manager.session_id,
+            'last_update_time': self.manager.last_update_time,
+            'owner_id': me.id,
+            'owner_name': me.first_name,
+            'uptime': str(timedelta(seconds=uptime.seconds)).split('.')[0],
+            'modules_count': len(self.manager.modules),
+            'os_info': f"{platform.system()} {platform.release()}",
+            'python_version': platform.python_version(),
+            'telethon_version': telethon.__version__,
+            'cpu_usage': sys_info.get('cpu', {}).get('usage', 'N/A'),
+            'cpu_cores': sys_info.get('cpu', {}).get('cores', 'N/A'),
+            'ram_percent': sys_info.get('memory', {}).get('percent', 'N/A'),
+            'ram_used': sys_info.get('memory', {}).get('used', 'N/A'),
+            'ram_total': sys_info.get('memory', {}).get('total', 'N/A'),
+            'repo_url': self.repo_url
+        }
+        
+        return template.format(**info_data)    
                     
     async def get_module_info(self, module_name: str) -> Dict[str, Any]:
         """Получение информации о модуле в структурированном виде"""
@@ -404,13 +561,16 @@ class CoreCommands:
             f"• <code>{prefix}update</code> - Обновить бота",
             f"• <code>{prefix}restart</code> - Перезапустить бота",
             f"• <code>{prefix}logs</code> - Получить файл логов",
+            f"• <code>{prefix}setprefix [новый префикс]</code> - Изменить префикс команд",
+            f"• <code>{prefix}setinfo [шаблон]</code> - Настроить вывод .info",
+            f"• <code>{prefix}mediainfo [текст]</code> - Отправить медиа с системной информацией",
             "",
             "📦 <b>Управление модулями:</b>",
             f"• <code>{prefix}lm</code> - Загрузить модуль из ответа на файл",
             f"• <code>{prefix}gm [name]</code> - Получить файл модуля",
             f"• <code>{prefix}ulm [name]</code> - Выгрузить и удалить модуль",
             f"• <code>{prefix}rlm [name]</code> - Перезагрузить модуль",
-            f"• <code>{prefix}mlist</code> - Список загруженных модулей",
+            f"• <code>{prefix}mlist</code> - Список загруженных модулей (с командами)",
             f"• <code>{prefix}mfind [query]</code> - Поиск модулей в репозитории",
             f"• <code>{prefix}dlm [name]</code> - Скачать модуль из репозитория",
             f"• <code>{prefix}mhelp [name]</code> - Помощь по конкретному модулю",
@@ -557,49 +717,19 @@ class CoreCommands:
             self.manager.logger.error(f"Error getting system info: {str(e)}")
             return {}
 
-    async def handle_info(self, event):
-        if not await self.is_owner(event):
-            return
+        async def handle_info(event):
+            if not await self.is_owner(event):
+                return
+            await event.edit(await self._generate_info_message(), parse_mode='html', link_preview=False)
+        
+        cmd_handlers.append((rf'^{prefix}info$', handle_info))
 
-        me = await self.manager.client.get_me()
-        uptime = datetime.now() - self.manager.start_time
-        sys_info = self.get_system_info()
-
-        info_msg = [
-            f"🤖 <b>Acroka UserBot v{self.manager.version}</b>",
-            f"🔹 <b>Сессия:</b> <code>{self.manager.session_id}</code>",
-            f"🔹 <b>Обновлено:</b> <code>{self.manager.last_update_time}</code>",
-            "",
-            f"👤 <b>Владелец:</b> <a href='tg://user?id={me.id}'>{me.first_name}</a>",
-            f"🆔 <b>ID:</b> <code>{me.id}</code>",
-            f"⏱ <b>Аптайм:</b> {str(timedelta(seconds=uptime.seconds)).split('.')[0]}",
-            f"📦 <b>Модулей:</b> {len(self.manager.modules)}",
-            "",
-            "⚙️ <b>Система:</b>",
-            f"• <b>ОС:</b> {platform.system()} {platform.release()}",
-            f"• <b>Python:</b> {platform.python_version()}",
-            f"• <b>Telethon:</b> {telethon.__version__}",
-        ]
-
-        # Добавляем информацию о системе, если она доступна
-        if sys_info:
-            info_msg.extend([
-                "",
-                "💻 <b>Ресурсы:</b>",
-                f"• <b>CPU:</b> {sys_info.get('cpu', {}).get('usage', 'N/A')}% "
-                f"({sys_info.get('cpu', {}).get('cores', 'N/A')} ядер)",
-                f"• <b>RAM:</b> {sys_info.get('memory', {}).get('percent', 'N/A')}% "
-                f"({sys_info.get('memory', {}).get('used', 'N/A')}/"
-                f"{sys_info.get('memory', {}).get('total', 'N/A')} MB)",
-            ])
-
-        info_msg.extend([
-            "",
-            f"📂 <b>Репозиторий:</b> <code>{self.repo_url}</code>"
-        ])
-
-        await event.edit("\n".join(info_msg), parse_mode='html', link_preview=False)
-
+        for pattern, handler in cmd_handlers:
+            self.manager.client.add_event_handler(
+                handler,
+                events.NewMessage(pattern=pattern, outgoing=True)
+            )
+            
     async def is_owner(self, event):
         # Эта функция должна проверять является ли пользователь владельцем
         return event.sender_id == self.manager.owner_id  # Пример, как может быть реализовано        
@@ -962,7 +1092,7 @@ class CoreCommands:
             )
 
     async def handle_modlist(self, event: Message):
-        """Показать красивый список всех модулей"""
+        """Показать красивый список всех модулей с командами"""
         if not await self.is_owner(event):
             return
             
@@ -970,7 +1100,6 @@ class CoreCommands:
             await event.edit("ℹ️ Нет загруженных модулей")
             return
             
-        # Создаем красивый список модулей
         mod_list = [
             f"📦 <b>Загруженные модули ({len(self.manager.modules)})</b>",
             "━━━━━━━━━━━━━━━━━━━━",
@@ -985,17 +1114,26 @@ class CoreCommands:
             hours = uptime.seconds // 3600
             minutes = (uptime.seconds % 3600) // 60
             
+            # Получаем команды модуля
+            commands = getattr(module, 'commands', {})
+            formatted_commands = []
+            
+            if isinstance(commands, dict):
+                formatted_commands = [f"{self.manager.prefix}{cmd}" for cmd in commands.keys()]
+            elif isinstance(commands, (list, tuple)):
+                formatted_commands = [f"{self.manager.prefix}{cmd}" for cmd in commands]
+            
             mod_list.extend([
                 f"🔹 <b>{mod_name}</b> v{version}",
                 f"   ├ <i>{desc}</i>",
                 f"   ├ 🕒 Загружен: {hours}ч {minutes}м назад",
-                f"   └ 📂 <code>{os.path.basename(mod_data['path'])}</code>",
+                f"   ├ 📂 <code>{os.path.basename(mod_data['path'])}</code>",
+                f"   └ ⚙️ <b>Команды:</b> {', '.join(formatted_commands) if formatted_commands else 'нет'}",
                 ""
             ])
         
         mod_list.append("🚀 Используйте <code>.mhelp [имя]</code> для подробной информации")
         
-        # Разбиваем сообщение на части, если оно слишком длинное
         full_message = "\n".join(mod_list)
         if len(full_message) > 4096:
             parts = [full_message[i:i+4000] for i in range(0, len(full_message), 4000)]
@@ -1005,8 +1143,7 @@ class CoreCommands:
             await event.delete()
         else:
             await event.edit(full_message, parse_mode='html')
-
-    
+            
     async def handle_translate(self, event: Message):
         """Переводчик"""
         if not await self.is_owner(event):
