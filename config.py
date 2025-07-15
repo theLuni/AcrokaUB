@@ -1,32 +1,40 @@
 import os
 from typing import Tuple, Optional
 
-# 📂 Константы
+# Пути к файлам конфигурации
+SOURCE_FOLDER = 'source'
 CONFIG_DIR = 'config'
-API_CREDENTIALS_FILE = os.path.join(CONFIG_DIR, 'api_credentials.txt')
-BOT_TOKEN_FILE = os.path.join(CONFIG_DIR, 'bot_token.txt')
-
-# 🔄 Создаем папку config, если ее нет
+os.makedirs(SOURCE_FOLDER, exist_ok=True)
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
+# Файлы конфигурации
+TOKEN_FILE = os.path.join(SOURCE_FOLDER, 'token.txt')
+BOT_TOKEN_FILE = os.path.join(CONFIG_DIR, 'bot_token.txt')
+API_CREDENTIALS_FILE = os.path.join(CONFIG_DIR, 'api_credentials.txt')
+
+# Глобальные переменные для хранения конфигурации
+API_ID: str = ""
+API_HASH: str = ""
+BOT_TOKEN: Optional[str] = None
 
 def get_api_credentials() -> Tuple[str, str]:
-    """
-    🔑 Получает API ID и API Hash из файла или запрашивает у пользователя.
-    
-    Возвращает:
-        Tuple[str, str]: Кортеж (API_ID, API_HASH)
-        
-    Вызывает:
-        ValueError: Если данные неверные или отсутствуют
-    """
     if os.path.exists(API_CREDENTIALS_FILE):
         try:
             with open(API_CREDENTIALS_FILE) as f:
                 credentials = [line.strip() for line in f if line.strip()]
                 if len(credentials) >= 2:
-                    print("🔑 Используем сохраненные API-данные")
+                    print("🔑 Используем сохраненные API-данные из config/api_credentials.txt")
                     return tuple(credentials[:2])
+        except Exception as e:
+            print(f"⚠️ Ошибка чтения API-данных: {e}")
+
+    if os.path.exists(TOKEN_FILE):
+        try:
+            with open(TOKEN_FILE, 'r') as f:
+                lines = f.read().strip().split('\n')
+                if len(lines) >= 2:
+                    print("🔑 Используем сохраненные API-данные из source/token.txt")
+                    return lines[0], lines[1]
         except Exception as e:
             print(f"⚠️ Ошибка чтения API-данных: {e}")
 
@@ -40,50 +48,28 @@ def get_api_credentials() -> Tuple[str, str]:
     with open(API_CREDENTIALS_FILE, 'w') as f:
         f.write(f"{api_id}\n{api_hash}")
     
-    print("✅ Данные успешно сохранены")
+    print(f"✅ Данные успешно сохранены в {API_CREDENTIALS_FILE}")
     return api_id, api_hash
 
-
 def get_bot_token() -> Optional[str]:
-    """
-    🤖 Получает токен бота из файла.
+    if os.path.exists(BOT_TOKEN_FILE):
+        with open(BOT_TOKEN_FILE, 'r') as f:
+            token_line = f.read().strip()
+            if token_line:
+                if token_line.startswith('AAG') and len(token_line) >= 30:
+                    return token_line
+                elif ':' in token_line:
+                    parts = token_line.split(':')
+                    if len(parts) >= 4 and parts[3].startswith('AAG'):
+                        return ':'.join(parts[2:])
     
-    Возвращает:
-        Optional[str]: Токен бота или None, если токен невалидный
-    """
-    if not os.path.exists(BOT_TOKEN_FILE):
-        print("⚠️ Файл с токеном бота не найден")
-        return None
+    old_token_file = os.path.join(SOURCE_FOLDER, 'bottoken.txt')
+    if os.path.exists(old_token_file):
+        with open(old_token_file, 'r') as f:
+            token_line = f.read().strip()
+            if token_line:
+                if token_line.startswith('AAG') and len(token_line) >= 30:
+                    return token_line
 
-    with open(BOT_TOKEN_FILE) as f:
-        token = f.read().strip()
-
-    if not token:
-        print("⚠️ Файл с токеном бота пуст")
-        return None
-
-    if ':' not in token or len(token.split(':')[1]) < 30:
-        print("❌ Неверный формат токена бота")
-        return None
-
-    print("🔑 Токен бота успешно загружен")
-    return token
-
-
-def initialize_config() -> None:
-    """⚙️ Инициализирует конфигурационные параметры."""
-    global BOT_TOKEN, API_ID, API_HASH
-    
-    try:
-        BOT_TOKEN = get_bot_token()
-        API_ID, API_HASH = get_api_credentials()
-        print("\n🎉 Конфигурация успешно загружена!")
-    except Exception as e:
-        print(f"\n❌ Ошибка инициализации: {e}")
-        print("Пожалуйста, проверьте конфигурационные файлы")
-        raise
-
-
-# 🚀 Запуск инициализации
-if __name__ == '__main__':
-    initialize_config()
+# Вызов функции для получения API ID и API Hash
+API_ID, API_HASH = get_api_credentials()
