@@ -205,7 +205,6 @@ class BotManager:
             return False
 
     async def check_internet_connection(self) -> bool:
-        """Проверка наличия интернет-соединения."""
         try:
             # Определяем операционную систему
             param = '-n' if platform.system().lower() == 'windows' else '-c'
