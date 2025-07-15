@@ -88,6 +88,101 @@ class ModuleManager:
 
     def _get_version(self):
         """Получаем версию бота"""
+import os
+import sys
+import subprocess 
+import importlib
+import asyncio
+import re
+import shutil
+from bs4 import BeautifulSoup
+import traceback
+import platform
+import telethon
+import psutil
+import socket
+import uuid
+from datetime import datetime, timedelta
+from telethon import TelegramClient, events
+from telethon.tl.types import Message
+from config import API_ID, API_HASH
+import requests
+from googletrans import Translator
+
+# Константы
+MODS_DIR = 'source/mods/'
+PREFIX_FILE = 'source/prefix.txt'
+DEFAULT_PREFIX = '.'
+LOADED_MODS_FILE = '.loaded_mods'
+SESSION_FILE = 'userbot_session'
+GITHUB_REPO = "https://github.com/theLuni/AcrokaUB"
+MODS_REPO = "https://github.com/theLuni/AcrokaUB-Modules"
+RAW_MODS_URL = "https://raw.githubusercontent.com/theLuni/AcrokaUB-Modules/main/"
+DOCS_URL = "https://github.com/theLuni/AcrokaUB/wiki"
+BACKUP_DIR = 'source/backups/'
+LOG_FILE = 'userbot.log'
+
+class ModuleFinder:
+    def __init__(self, repo_url):
+        self.repo_url = repo_url
+        self.modules_db_url = f"{RAW_MODS_URL}modules_db.json"
+        self.modules = self._load_modules_db()
+
+    def _load_modules_db(self):
+        """Загружает базу данных модулей из JSON-файла"""
+        try:
+            response = requests.get(self.modules_db_url)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error loading modules database: {str(e)}")
+            return {}
+
+    def search_modules(self, search_query):
+        """Ищет модули по ключевым словам в JSON-базе"""
+        search_query = search_query.lower()
+        found_modules = {}
+        
+        for module_name, module_info in self.modules.items():
+            # Ищем в названии модуля
+            name_match = search_query in module_name.lower()
+            
+            # Ищем в описании
+            desc_match = search_query in module_info.get('description', '').lower()
+            
+            # Ищем в ключевых словах
+            keywords = [kw.lower() for kw in module_info.get('keywords', [])]
+            kw_match = search_query in keywords
+            
+            # Ищем в командах
+            commands = [cmd.lower() for cmd in module_info.get('commands', [])]
+            cmd_match = search_query in commands
+            
+            if name_match or desc_match or kw_match or cmd_match:
+                found_modules[module_name] = module_info
+                
+        return found_modules
+        
+class ModuleManager:
+    def __init__(self, client):
+        self.client = client
+        self.modules = {}
+        self.prefix = DEFAULT_PREFIX
+        self.start_time = datetime.now()
+        self.session_id = str(uuid.uuid4())[:8]
+        self.version = self._get_version() or "1.0.0"
+        self.last_update_time = self._get_last_update_time() or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        os.makedirs(MODS_DIR, exist_ok=True)
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        self._setup_logging()
+        self.owner_id = None  # Добавлено для хранения ID владельца
+
+    async def set_owner(self, owner_id):
+        """Установка ID владельца"""
+        self.owner_id = owner_id
+
+    def _get_version(self):
+        """Получаем версию бота"""
         try:
             # Сначала пробуем получить из git
             if os.path.exists('.git'):
@@ -182,7 +277,7 @@ class ModuleManager:
             if os.path.exists(module_path):
                 os.remove(module_path)
             return False
-
+            
     async def _check_dependencies(self, module_path: str) -> bool:
         """Проверка и установка зависимостей модуля"""
         try:
@@ -319,21 +414,29 @@ class ModuleManager:
 class CoreCommands:
     def __init__(self, manager):
         self.manager = manager
-        self.owner_id = None
         self.repo_url = GITHUB_REPO
         self.docs_url = DOCS_URL
     
     async def initialize(self):
         me = await self.manager.client.get_me()
-        self.owner_id = me.id
-        print(f"🔐 [Система] Владелец ID: {self.owner_id}")
-        self.manager.logger.info(f"Bot started for user ID: {self.owner_id}")
+        await self.manager.set_owner(me.id)  # Используем новый метод для установки владельца
+        print(f"🔐 [Система] Владелец ID: {me.id}")
+        self.manager.logger.info(f"Bot started for user ID: {me.id}")
 
-    async def is_owner(self, event):  # Оставлен только один метод is_owner
-        if not hasattr(self, 'owner_id'):
+    async def is_owner(self, event: Message) -> bool:
+        """Проверка, является ли отправитель владельцем бота"""
+        if not hasattr(event, 'sender_id'):
             return False
-        return event.sender_id == self.owner_id
-
+            
+        if event.sender_id == self.manager.owner_id:
+            return True
+            
+        try:
+            await event.delete()
+        except:
+            pass
+        return False
+        
     async def handle_help(self, event: Message):
         if not await self.is_owner(event):
             return
@@ -993,6 +1096,7 @@ async def check_internet_connection() -> bool:
         return True
     except subprocess.CalledProcessError:
         return False
+
 async def main(client=None):
     """Основная функция запуска юзербота"""
     print("🟢 [Система] Запуск Acroka UserBot...")
@@ -1026,6 +1130,9 @@ async def main(client=None):
         print(f"🟢 [Система] Юзербот запущен | Префикс: '{prefix}' | Версия: {manager.version}")
         print("🔹 Отправьте .help для списка команд")
         
+        # Убедимся, что обработчики зарегистрированы
+        print(f"🔹 Зарегистрировано обработчиков: {len(client.list_event_handlers())}")
+        
         # Основной цикл
         await client.run_until_disconnected()
         
@@ -1038,5 +1145,8 @@ async def main(client=None):
             print("🔴 [Система] Юзербот остановлен")
 
 if __name__ == '__main__':
+    # Убедимся, что используется правильный цикл событий
+    if sys.platform == 'win32':
+        asyncio.set_event_loop(asyncio.ProactorEventLoop())
+    
     asyncio.run(main())
-
