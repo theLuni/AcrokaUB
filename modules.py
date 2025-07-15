@@ -413,23 +413,49 @@ class CoreCommands:
         if not await self.is_owner(event):
             return
             
+        # Получаем текст после команды
         template = event.pattern_match.group(1)
-        
-        if not template:
-            # Показать текущий шаблон
+
+        # Если текст не указан, показываем текущий шаблон и инструкцию
+        if template is None:
             try:
+                # Создаем директорию, если ее нет
+                os.makedirs(os.path.dirname(CUSTOM_INFO_FILE), exist_ok=True)
+                
+                # Если файла нет, создаем его с дефолтным шаблоном
+                if not os.path.exists(CUSTOM_INFO_FILE):
+                    with open(CUSTOM_INFO_FILE, 'w') as f:
+                        json.dump({'template': DEFAULT_INFO_TEMPLATE}, f)
+                
+                # Читаем текущий шаблон
                 with open(CUSTOM_INFO_FILE, 'r') as f:
                     current_template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
-            except:
+            except Exception as e:
+                self.logger.error(f"Error reading custom info file: {str(e)}")
                 current_template = DEFAULT_INFO_TEMPLATE
                 
             await event.edit(
                 f"ℹ️ <b>Текущий шаблон .info:</b>\n\n"
                 f"<code>{current_template}</code>\n\n"
-                f"Доступные переменные: version, session_id, last_update_time, "
-                f"owner_id, owner_name, uptime, modules_count, os_info, python_version, "
-                f"telethon_version, cpu_usage, cpu_cores, ram_percent, ram_used, "
-                f"ram_total, repo_url",
+                "📝 <b>Как изменить:</b>\n"
+                f"Используйте <code>{self.manager.prefix}setinfo [новый шаблон]</code>\n\n"
+                "🔄 <b>Доступные переменные:</b>\n"
+                "• <code>{version}</code> - Версия бота\n"
+                "• <code>{session_id}</code> - ID сессии\n"
+                "• <code>{last_update_time}</code> - Время обновления\n"
+                "• <code>{owner_id}</code> - ID владельца\n"
+                "• <code>{owner_name}</code> - Имя владельца\n"
+                "• <code>{uptime}</code> - Время работы\n"
+                "• <code>{modules_count}</code> - Количество модулей\n"
+                "• <code>{os_info}</code> - Информация об ОС\n"
+                "• <code>{python_version}</code> - Версия Python\n"
+                "• <code>{telethon_version}</code> - Версия Telethon\n"
+                "• <code>{cpu_usage}</code> - Загрузка CPU\n"
+                "• <code>{cpu_cores}</code> - Ядра CPU\n"
+                "• <code>{ram_percent}</code> - Использование RAM\n"
+                "• <code>{ram_used}</code> - Использовано RAM (MB)\n"
+                "• <code>{ram_total}</code> - Всего RAM (MB)\n"
+                "• <code>{repo_url}</code> - Ссылка на репозиторий",
                 parse_mode='html'
             )
             return
@@ -442,7 +468,7 @@ class CoreCommands:
             await event.edit("✅ Шаблон .info успешно обновлен!")
         except Exception as e:
             await event.edit(f"❌ Ошибка: {str(e)}")
-
+            
     async def handle_media_info(self, event: Message):
         """Команда для загрузки медиа с текстом"""
         if not await self.is_owner(event):
