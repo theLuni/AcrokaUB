@@ -372,28 +372,6 @@ class CoreCommands:
             pass
         return False
 
-    def get_system_info(self):
-        """Получение информации о системе"""
-        try:
-            mem = psutil.virtual_memory()
-            disk = psutil.disk_usage('/')
-            
-            return {
-                'memory': {
-                    'used': round(mem.used / 1024 / 1024, 1),
-                    'total': round(mem.total / 1024 / 1024, 1),
-                    'percent': mem.percent
-                },
-                'cpu': {
-                    'cores': psutil.cpu_count(),
-                    'usage': psutil.cpu_percent()
-                },
-                'uptime': str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
-            }
-        except Exception as e:
-            self.manager.logger.error(f"Error getting system info: {str(e)}")
-            return None
-
     async def handle_help(self, event: Message):
         if not await self.is_owner(event):
             return
@@ -458,14 +436,34 @@ class CoreCommands:
         except Exception as e:
             await event.edit(f"❌ Ошибка при получении логов: {str(e)}")
 
-    async def handle_info(self, event: Message):
+    def get_system_info(self):
+        """Получение информации о системе"""
+        try:
+            mem = psutil.virtual_memory()
+            return {
+                'memory': {
+                    'used': round(mem.used / 1024 / 1024, 1),
+                    'total': round(mem.total / 1024 / 1024, 1),
+                    'percent': mem.percent
+                },
+                'cpu': {
+                    'cores': psutil.cpu_count(),
+                    'usage': psutil.cpu_percent()
+                },
+                'uptime': str(datetime.now() - datetime.fromtimestamp(psutil.boot_time())).split('.')[0]
+            }
+        except Exception as e:
+            self.manager.logger.error(f"Error getting system info: {str(e)}")
+            return {}
+
+    async def handle_info(self, event):
         if not await self.is_owner(event):
             return
-            
+
         me = await self.manager.client.get_me()
         uptime = datetime.now() - self.manager.start_time
         sys_info = self.get_system_info()
-        
+
         info_msg = [
             f"🤖 <b>Acroka UserBot v{self.manager.version}</b>",
             f"🔹 <b>Сессия:</b> <code>{self.manager.session_id}</code>",
@@ -480,16 +478,30 @@ class CoreCommands:
             f"• <b>ОС:</b> {platform.system()} {platform.release()}",
             f"• <b>Python:</b> {platform.python_version()}",
             f"• <b>Telethon:</b> {telethon.__version__}",
-            "",
-            "💻 <b>Ресурсы:</b>",
-            f"• <b>CPU:</b> {sys_info['cpu']['usage']}% ({sys_info['cpu']['cores']} ядер)",
-            f"• <b>RAM:</b> {sys_info['memory']['percent']}% ({sys_info['memory']['used']}/{sys_info['memory']['total']} MB)",
-            "",
-            f"📂 <b>Репозиторий:</b> <code>{self.repo_url}</code>"
         ]
 
+        # Добавляем информацию о системе, если она доступна
+        if sys_info:
+            info_msg.extend([
+                "",
+                "💻 <b>Ресурсы:</b>",
+                f"• <b>CPU:</b> {sys_info.get('cpu', {}).get('usage', 'N/A')}% "
+                f"({sys_info.get('cpu', {}).get('cores', 'N/A')} ядер)",
+                f"• <b>RAM:</b> {sys_info.get('memory', {}).get('percent', 'N/A')}% "
+                f"({sys_info.get('memory', {}).get('used', 'N/A')}/"
+                f"{sys_info.get('memory', {}).get('total', 'N/A')} MB)",
+            ])
+
+        info_msg.extend([
+            "",
+            f"📂 <b>Репозиторий:</b> <code>{self.repo_url}</code>"
+        ])
+
         await event.edit("\n".join(info_msg), parse_mode='html', link_preview=False)
-        
+
+    async def is_owner(self, event):
+        # Эта функция должна проверять является ли пользователь владельцем
+        return event.sender_id == self.manager.owner_id  # Пример, как может быть реализовано        
     async def handle_reloadmod(self, event: Message):
         """Перезагрузка модуля"""
         if not await self.is_owner(event):
