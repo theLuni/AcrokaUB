@@ -493,8 +493,6 @@ class CoreCommands:
                 os.remove(media)
 
     async def _generate_info_message(self):
-
-    async def _generate_info_message(self):
         """Генерация сообщения .info с учетом кастомного шаблона"""
         me = await self.manager.client.get_me()
         uptime = datetime.now() - self.manager.start_time
