@@ -421,7 +421,6 @@ class CoreCommands:
             )
             return
         
-        # Разделяем только первый пробел, остальное оставляем как значение
         parts = args.split(' ', 1)
         setting_type = parts[0].lower()
         value = parts[1] if len(parts) > 1 else None
@@ -432,7 +431,7 @@ class CoreCommands:
                 return
                 
             self.manager.prefix = value
-            with open(PREFIX_FILE, 'w') as f:
+            with open(self.PREFIX_FILE, 'w') as f:
                 f.write(value)
                 
             await event.edit(f"✅ Префикс изменен на: <code>{value}</code>", parse_mode='html')
@@ -441,10 +440,10 @@ class CoreCommands:
         elif setting_type == "info":
             if not value:
                 try:
-                    with open(CUSTOM_INFO_FILE, 'r', encoding='utf-8') as f:
-                        current_template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
+                    with open(self.CUSTOM_INFO_FILE, 'r', encoding='utf-8') as f:
+                        current_template = json.load(f).get('template', self.DEFAULT_INFO_TEMPLATE)
                 except:
-                    current_template = DEFAULT_INFO_TEMPLATE
+                    current_template = self.DEFAULT_INFO_TEMPLATE
                     
                 await event.edit(
                     f"ℹ️ <b>Текущий текст для .info:</b>\n\n"
@@ -457,16 +456,16 @@ class CoreCommands:
                 return
                 
             try:
-                # Получаем полный текст сообщения
                 full_text = event.raw_text
-                # Находим начало шаблона (после ".set info")
                 template_start = full_text.find(".set info") + len(".set info")
                 template_text = full_text[template_start:].strip()
                 
+                if template_text.startswith(self.manager.prefix):
+                    template_text = template_text[len(self.manager.prefix):].strip()
+                
                 data = {'template': template_text}
-                with open(CUSTOM_INFO_FILE, 'w', encoding='utf-8') as f:
+                with open(self.CUSTOM_INFO_FILE, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=4)
-                    
                 await event.edit("✅ Текст для .info успешно обновлен!")
             except Exception as e:
                 await event.edit(f"❌ Ошибка: {str(e)}")
