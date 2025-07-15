@@ -433,7 +433,7 @@ class CoreCommands:
             await event.edit(
                 "⚙️ <b>Доступные настройки:</b>\n\n"
                 f"<code>{self.manager.prefix}set prefix [новый префикс]</code>\n"
-                f"<code>{self.manager.prefix}set info [шаблон]</code>\n"
+                f"<code>{self.manager.prefix}set info</code> (ответ на сообщение с шаблоном)\n"
                 f"<code>{self.manager.prefix}set media</code> (ответ на сообщение)\n"
                 f"<code>{self.manager.prefix}set reset [all|prefix|info|media]</code>\n\n"
                 "ℹ️ Для просмотра текущих настроек используйте команду без значения",
@@ -458,7 +458,15 @@ class CoreCommands:
             await self.manager.save_loaded_modules()
             
         elif setting_type == "info":
-            if not value:
+            if event.is_reply:
+                # Если это ответ на сообщение, берем текст из replied сообщения
+                reply = await event.get_reply_message()
+                template_text = reply.text
+            elif value:
+                # Если текст передан как аргумент
+                template_text = value
+            else:
+                # Показать текущий шаблон
                 try:
                     with open(self.CUSTOM_INFO_FILE, 'r', encoding='utf-8') as f:
                         current_template = json.load(f).get('template', self.DEFAULT_INFO_TEMPLATE)
@@ -476,13 +484,6 @@ class CoreCommands:
                 return
                 
             try:
-                full_text = event.raw_text
-                template_start = full_text.find(".set info") + len(".set info")
-                template_text = full_text[template_start:].strip()
-                
-                if template_text.startswith(self.manager.prefix):
-                    template_text = template_text[len(self.manager.prefix):].strip()
-                
                 data = {'template': template_text}
                 with open(self.CUSTOM_INFO_FILE, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=4)
