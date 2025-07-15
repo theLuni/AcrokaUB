@@ -1180,13 +1180,19 @@ class CoreCommands:
         await self.manager.save_loaded_modules()
         os.execl(sys.executable, sys.executable, *sys.argv)
 
+    async def handle_info(self, event: Message):
+        """Обработчик команды .info - показывает информацию о боте"""
+        if not await self.is_owner(event):
+            return
+        await event.edit(await self._generate_info_message(), parse_mode='html', link_preview=False)
+
     def register_handlers(self):
         prefix = re.escape(self.manager.prefix)
-        
+
         cmd_handlers = [
             (rf'^{prefix}help$', self.handle_help),
             (rf'^{prefix}ping$', self.handle_ping),
-            (rf'^{prefix}info$', self.handle_info),
+            (rf'^{prefix}info$', self.handle_info),  # Обработчик команды info
             (rf'^{prefix}update$', self.handle_update),
             (rf'^{prefix}clean$', self.handle_clean),
             (rf'^{prefix}lm$', self.handle_loadmod),
@@ -1207,29 +1213,12 @@ class CoreCommands:
             (rf'^{prefix}setinfo (.+)$', self.handle_setinfo),
             (rf'^{prefix}mediainfo(?: (.+))?$', self.handle_media_info),
         ]
-        async def handle_info(event):
-            if not await self.is_owner(event):
-                return
-            await event.edit(await self._generate_info_message(), parse_mode='html', link_preview=False)
-        
-        cmd_handlers.append((rf'^{prefix}info$', handle_info))
 
         for pattern, handler in cmd_handlers:
             self.manager.client.add_event_handler(
                 handler,
                 events.NewMessage(pattern=pattern, outgoing=True)
             )
-            
-        
-        for pattern, handler in cmd_handlers:
-            self.manager.client.add_event_handler(
-                handler,
-                events.NewMessage(pattern=pattern, outgoing=True)
-            )
-
-import os
-import subprocess
-import platform
 
 async def check_internet_connection() -> bool:
     """Проверка наличия интернет-соединения."""
