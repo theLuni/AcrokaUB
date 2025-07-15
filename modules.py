@@ -25,6 +25,8 @@ DEFAULT_PREFIX = '.'
 LOADED_MODS_FILE = '.loaded_mods'
 SESSION_FILE = 'userbot_session'
 GITHUB_REPO = "https://github.com/theLuni/AcrokaUB"
+MODS_REPO = "https://github.com/theLuni/AcrokaUB-Modules"
+RAW_MODS_URL = "https://raw.githubusercontent.com/theLuni/AcrokaUB-Modules/main/"
 DOCS_URL = "https://github.com/theLuni/AcrokaUB/wiki"
 BACKUP_DIR = 'source/backups/'
 LOG_FILE = 'userbot.log'
@@ -240,6 +242,30 @@ class ModuleManager:
     async def save_loaded_modules(self):
         with open(LOADED_MODS_FILE, 'w') as f:
             f.write('\n'.join(self.modules.keys()))
+            
+    async def download_module(self, url: str) -> str:
+        """Скачивание модуля по URL"""
+        try:
+            # Проверяем, что URL принадлежит официальному репозиторию
+            if not url.startswith(RAW_MODS_URL):
+                raise ValueError("Недопустимый URL модуля. Разрешены только модули из официального репозитория.")
+                
+            module_name = os.path.basename(url)
+            module_path = os.path.join(MODS_DIR, module_name)
+            
+            response = requests.get(url)
+            response.raise_for_status()
+            
+            with open(module_path, 'wb') as f:
+                f.write(response.content)
+                
+            return module_path
+        except Exception as e:
+            self.logger.error(f"Error downloading module: {str(e)}")
+            if os.path.exists(module_path):
+                os.remove(module_path)
+            raise
+
 
 class CoreCommands:
     def __init__(self, manager):
@@ -609,6 +635,126 @@ class CoreCommands:
             await event.edit(f"❌ Ошибка: {str(e)}")
             if os.path.exists(path):
                 os.remove(path)
+                
+    async def handle_searchmod(self, event: Message):
+        """Поиск модулей в репозитории"""
+        if not await self.is_owner(event):
+            return
+            
+        search_query = event.pattern_match.group(1)
+        if not search_query:
+            await event.edit("❌ Укажите поисковый запрос")
+            return
+            
+        try:
+            await event.edit("🔍 Поиск модулей...")
+            
+            # Получаем список файлов из репозитория
+            api_url = f"https://api.github.com/repos/theLuni/AcrokaUB-Modules/contents/"
+            headers = {'Accept': 'application/vnd.github.v3+json'}
+            response = requests.get(api_url, headers=headers)
+            response.raise_for_status()
+            
+            modules = []
+            for item in response.json():
+                if item['name'].endswith('.py') and search_query.lower() in item['name'].lower():
+                    modules.append(item)
+            
+            if not modules:
+                await event.edit(f"🔍 По запросу '{search_query}' ничего не найдено")
+                return
+                
+            # Получаем информацию о каждом модуле
+            results = []
+            for module in modules[:10]:  # Ограничиваем 10 результатами
+                raw_url = f"{RAW_MODS_URL}{module['name']}"
+                try:
+                    module_content = requests.get(raw_url).text
+                    docstring = re.search(r'\"\"\"(.*?)\"\"\"', module_content, re.DOTALL)
+                    description = docstring.group(1).strip().split('\n')[0] if docstring else "Нет описания"
+                    
+                    results.append(
+                        f"📦 <b>{module['name'][:-3]}</b>\n"
+                        f"📝 <i>{description[:100]}...</i>\n"
+                        f"🔗 <code>.dlm {module['name']}</code>\n"
+                    )
+                except:
+                    results.append(
+                        f"📦 <b>{module['name'][:-3]}</b>\n"
+                        f"🔗 <code>.dlm {module['name']}</code>\n"
+                    )
+            
+            message = [
+                f"🔍 <b>Результаты поиска по запросу '{search_query}':</b>",
+                f"📂 <b>Репозиторий:</b> <code>{MODS_REPO}</code>",
+                "",
+                *results,
+                "",
+                f"ℹ️ Всего найдено: {len(modules)}",
+                f"ℹ️ Для установки используйте команду <code>.dlm имя_модуля.py</code>"
+            ]
+            
+            await event.edit("\n".join(message), parse_mode='html')
+            
+        except Exception as e:
+            await event.edit(f"❌ Ошибка поиска: {str(e)}")
+
+    async def handle_downloadmod(self, event: Message):
+        """Скачивание модуля из репозитория"""
+        if not await self.is_owner(event):
+            return
+            
+        module_file = event.pattern_match.group(1)
+        if not module_file:
+            await event.edit("❌ Укажите имя файла модуля (например: .dlm example.py)")
+            return
+            
+        if not module_file.endswith('.py'):
+            module_file += '.py'
+            
+        try:
+            msg = await event.edit(f"⬇️ Скачивание модуля {module_file}...")
+            
+            module_url = f"{RAW_MODS_URL}{module_file}"
+            module_path = await self.manager.download_module(module_url)
+            
+            module_name = os.path.splitext(module_file)[0]
+            if await self.manager.load_module(module_name):
+                await msg.edit(
+                    f"✅ <b>Модуль {module_name} успешно установлен!</b>\n\n"
+                    f"Файл: <code>{module_file}</code>\n"
+                    f"Источник: <code>{MODS_REPO}</code>\n\n"
+                    f"Для информации о модуле используйте <code>{self.manager.prefix}gm {module_name}</code>",
+                    parse_mode='html'
+                )
+            else:
+                await msg.edit(
+                    "⚠️ <b>Модуль скачан, но не загружен</b>\n\n"
+                    f"Файл: <code>{module_file}</code>\n"
+                    f"Проверьте логи для подробностей: <code>{self.manager.prefix}logs</code>",
+                    parse_mode='html'
+                )
+                
+        except ValueError as e:
+            await event.edit(
+                "❌ <b>Ошибка безопасности</b>\n\n"
+                f"{str(e)}\n\n"
+                "Разрешены только модули из официального репозитория: "
+                f"<code>{MODS_REPO}</code>",
+                parse_mode='html'
+            )
+        except Exception as e:
+            await event.edit(
+                "❌ <b>Ошибка загрузки модуля</b>\n\n"
+                f"<code>{str(e)}</code>\n\n"
+                "Проверьте:\n"
+                "1. Правильность имени модуля\n"
+                "2. Наличие модуля в репозитории\n"
+                f"3. Доступность репозитория: <code>{MODS_REPO}</code>",
+                parse_mode='html'
+            )
+            if os.path.exists(module_path):
+                os.remove(module_path)
 
     async def handle_getmod(self, event: Message):
         """Отправить файл модуля в чат"""
@@ -798,6 +944,9 @@ class CoreCommands:
             (rf'^{prefix}calc (.+)$', self.handle_calc),
             (rf'^{prefix}restart$', self.restart_bot),
             (rf'^{prefix}logs$', self.handle_logs),
+            (rf'^{prefix}searchmod (.+)$', self.handle_searchmod),
+            (rf'^{prefix}dlm (\w+\.py)$', self.handle_downloadmod),
+            (rf'^{prefix}dlm (\w+)$', self.handle_downloadmod),
         ]
         
         for pattern, handler in cmd_handlers:
