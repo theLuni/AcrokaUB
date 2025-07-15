@@ -649,7 +649,7 @@ class CoreCommands:
             await event.edit("🔍 Поиск модулей...")
             
             # Получаем список файлов из репозитория
-            api_url = "https://api.github.com/repos/theLuni/AcrokaUB-Modules/contents/"
+            api_url = "https://api.github.com/repos/theLuni/AcrokaUB-Modules/main/"
             headers = {'Accept': 'application/vnd.github.v3+json'}
             response = requests.get(api_url, headers=headers)
             response.raise_for_status()
