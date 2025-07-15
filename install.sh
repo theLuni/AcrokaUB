@@ -51,7 +51,7 @@ clone_repo() {
         }
     else
         git clone https://github.com/theLuni/AcrokaUB.git || {
-            echo -e "${RED}[✗] Ошибка при клонировании${NC}"
+            echo -e "${RED}[✗] Ошибка при клонирование${NC}"
             exit 1
         }
         cd AcrokaUB || exit 1
@@ -98,7 +98,10 @@ cd ~/AcrokaUB
 python3 main.py
 EOF
 
-    chmod +x ~/AcrokaUB/start.sh
+    chmod +x ~/AcrokaUB/start.sh || {
+        echo -e "${RED}[✗] Не удалось дать права на выполнение start.sh${NC}"
+        exit 1
+    }
 
     # Добавляем автозапуск
     if ! grep -q "~/AcrokaUB/start.sh" ~/.bashrc; then
