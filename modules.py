@@ -101,11 +101,14 @@ class ModuleManager:
         self.session_id = str(uuid.uuid4())[:8]
         self.version = self._get_version() or "1.0.0"
         self.last_update_time = self._get_last_update_time() or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Создаем все необходимые директории
         os.makedirs(MODS_DIR, exist_ok=True)
         os.makedirs(BACKUP_DIR, exist_ok=True)
+        os.makedirs(os.path.dirname(CUSTOM_INFO_FILE), exist_ok=True)
+        
         self._setup_logging()
-        self.owner_id = None  # Добавлено для хранения ID владельца
-
+        self.owner_id = None
     async def set_owner(self, owner_id):
         """Установка ID владельца"""
         self.owner_id = owner_id
