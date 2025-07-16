@@ -35,7 +35,7 @@ class BotManager:
                 session=f'acroka_session_{API_ID}',
                 api_id=API_ID,
                 api_hash=API_HASH,
-                device_model="Bot Manager",
+                device_model="Acroka UserBot",
                 system_version="1.0",
                 app_version="2.0"
             )
