@@ -437,10 +437,11 @@ class CoreCommands:
         if not args:
             await event.edit(
                 "⚙️ <b>Доступные настройки:</b>\n\n"
-                f"<code>{self.manager.prefix}cfg prefix [новый префикс]</code>\n"
-                f"<code>{self.manager.prefix}cfg info / help</code> сохранить настойку info / помощь (ответ на сообщение с шаблоном)\n"
-                f"<code>{self.manager.prefix}cfg media</code> (ответ на сообщение)\n"
-                f"<code>{self.manager.prefix}cfg reset [all|prefix|info|media]</code>\n\n"
+                f"<code>{self.manager.prefix}cfg prefix [новый префикс]</code> - изменить префикс команд\n"
+                f"<code>{self.manager.prefix}cfg info</code> - сохранить шаблон info (ответ на сообщение)\n"
+                f"<code>{self.manager.prefix}cfg help</code> - сохранить шаблон помощи (ответ на сообщение)\n"
+                f"<code>{self.manager.prefix}cfg media</code> - сохранить медиа (ответ на сообщение)\n"
+                f"<code>{self.manager.prefix}cfg reset [all|prefix|info|help|media]</code> - сбросить настройки\n\n"
                 "ℹ️ Для просмотра текущих настроек используйте команду без значения",
                 parse_mode='html'
             )
@@ -451,17 +452,23 @@ class CoreCommands:
         value = parts[1] if len(parts) > 1 else None
 
         if setting_type == "prefix":
-            if not value or len(value) > 3:
-                await event.edit("❌ Укажите новый префикс (1-3 символа)")
+            if not value:
+                current_prefix = getattr(self.manager, 'prefix', 'не установлен')
+                await event.edit(f"ℹ️ Текущий префикс: <code>{current_prefix}</code>", parse_mode='html')
+                return
+            
+            if len(value) > 3:
+                await event.edit("❌ Префикс должен содержать не более 3 символов")
                 return
 
             self.manager.prefix = value
-            with open(self.PREFIX_FILE, 'w') as f:
-                f.write(value)
-
-            await event.edit(f"✅ Префикс изменен на: <code>{value}</code>", parse_mode='html')
-            await self.manager.save_loaded_modules()
-
+            try:
+                with open(self.PREFIX_FILE, 'w') as f:
+                    f.write(value)
+                await event.edit(f"✅ Префикс изменен на: <code>{value}</code>", parse_mode='html')
+                await self.manager.save_loaded_modules()
+            except Exception as e:
+                await event.edit(f"❌ Ошибка при сохранении префикса: {str(e)}")
         elif setting_type == "info":
             if value == "help":
                 help_text = (
