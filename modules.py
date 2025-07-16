@@ -1,6 +1,7 @@
 from typing import Dict, Any
 import os
 import sys
+import bs4
 import subprocess 
 import importlib
 import asyncio
