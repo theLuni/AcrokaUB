@@ -463,7 +463,7 @@ class CoreCommands:
 
             self.manager.prefix = value
             try:
-                with open(self.PREFIX_FILE, 'w') as f:
+                with open(PREFIX_FILE, 'w') as f:
                     f.write(value)
                 await event.edit(f"✅ Префикс изменен на: <code>{value}</code>", parse_mode='html')
                 await self.manager.save_loaded_modules()
