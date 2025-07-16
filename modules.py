@@ -387,6 +387,108 @@ class CoreCommands:
         self.repo_url = GITHUB_REPO
         self.CUSTOM_INFO_FILE = CUSTOM_INFO_FILE
         self.docs_url = DOCS_URL
+        self._restart_status_file = 'source/.restart_status.json'
+        
+    async def _save_restart_status(self, event_msg_id=None, chat_id=None):
+        """Сохраняет статус перезагрузки в файл"""
+        try:
+            status = {
+                'msg_id': event_msg_id,
+                'chat_id': chat_id,
+                'timestamp': datetime.now().isoformat()
+            }
+            os.makedirs(os.path.dirname(self._restart_status_file), exist_ok=True)
+            with open(self._restart_status_file, 'w', encoding='utf-8') as f:
+                json.dump(status, f, ensure_ascii=False)
+        except Exception as e:
+            self.manager.logger.error(f"Error saving restart status: {str(e)}")
+
+    async def _clear_restart_status(self):
+        """Очищает статус перезагрузки"""
+        try:
+            if os.path.exists(self._restart_status_file):
+                os.remove(self._restart_status_file)
+        except Exception as e:
+            self.manager.logger.error(f"Error clearing restart status: {str(e)}")
+
+    async def _get_restart_status(self):
+        """Получает сохраненный статус перезагрузки"""
+        try:
+            if os.path.exists(self._restart_status_file):
+                with open(self._restart_status_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            self.manager.logger.error(f"Error reading restart status: {str(e)}")
+        return None
+
+    async def check_restart_status(self):
+        """Проверяет статус перезагрузки при старте и обновляет сообщение"""
+        try:
+            status = await self._get_restart_status()
+            if status:
+                chat_id = status.get('chat_id')
+                msg_id = status.get('msg_id')
+                
+                if chat_id and msg_id:
+                    try:
+                        await self.manager.client.edit_message(
+                            chat_id,
+                            msg_id,
+                            "🟢 <b>Acroka UserBot успешно перезагружен и работает!</b>\n"
+                            f"🕒 <i>Время перезагрузки: {datetime.now().strftime('%H:%M:%S')}</i>",
+                            parse_mode='html'
+                        )
+                    except Exception as e:
+                        # Если сообщение не найдено, отправляем новое
+                        if "message not found" in str(e).lower():
+                            me = await self.manager.client.get_me()
+                            await self.manager.client.send_message(
+                                me.id,
+                                "🟢 <b>Acroka UserBot успешно перезагружен</b>\n"
+                                f"⏱ <i>Перезагрузка заняла менее минуты</i>",
+                                parse_mode='html'
+                            )
+            await self._clear_restart_status()
+        except Exception as e:
+            self.manager.logger.error(f"Error in check_restart_status: {str(e)}")
+
+    async def restart_bot(self, event: Message = None):
+        """Улучшенная перезагрузка бота с подтверждением"""
+        if event and not await self.is_owner(event):
+            return
+
+        # Сохраняем сообщение о начале перезагрузки
+        restart_msg = None
+        try:
+            if event:
+                restart_msg = await event.edit(
+                    "🔄 <b>Acroka UserBot перезагружается...</b>\n"
+                    "⏳ <i>Это займет несколько секунд</i>",
+                    parse_mode='html'
+                )
+                await self._save_restart_status(restart_msg.id, event.chat_id)
+            else:
+                me = await self.manager.client.get_me()
+                restart_msg = await self.manager.client.send_message(
+                    me.id,
+                    "🔄 <b>Acroka UserBot перезагружается...</b>\n"
+                    "⏳ <i>Это займет несколько секунд</i>",
+                    parse_mode='html'
+                )
+                await self._save_restart_status(restart_msg.id, me.id)
+        except Exception as e:
+            self.manager.logger.error(f"Error sending restart message: {str(e)}")
+
+        # Гарантированное сохранение состояния
+        try:
+            await self.manager.save_loaded_modules()
+            await asyncio.sleep(2)  # Даем время на сохранение
+        except Exception as e:
+            self.manager.logger.error(f"Error during pre-restart cleanup: {str(e)}")
+
+        # Перезапуск
+        os.execl(sys.executable, sys.executable, *sys.argv)
+
     
     async def initialize(self):
         me = await self.manager.client.get_me()
@@ -463,12 +565,28 @@ class CoreCommands:
 
             self.manager.prefix = value
             try:
+                # Сохраняем новый префикс
                 with open(PREFIX_FILE, 'w') as f:
                     f.write(value)
-                await event.edit(f"✅ Префикс изменен на: <code>{value}</code>", parse_mode='html')
-                await self.manager.save_loaded_modules()
+                
+                # Отправляем сообщение о начале перезагрузки
+                msg = await event.edit(
+                    f"✅ Префикс изменен на: <code>{value}</code>\n"
+                    "🔄 <b>Acroka UserBot перезагружается для применения изменений...</b>",
+                    parse_mode='html'
+                )
+                
+                # Сохраняем статус перезагрузки
+                await self._save_restart_status(msg.id, event.chat_id)
+                
+                # Даем время на сохранение и отправку сообщения
+                await asyncio.sleep(2)
+                
+                # Выполняем перезагрузку
+                await self.restart_bot()
+                
             except Exception as e:
-                await event.edit(f"❌ Ошибка при сохранении префикса: {str(e)}")
+                await event.edit(f"❌ Ошибка при смене префикса: {str(e)}")
         elif setting_type == "info":
             if value == "help":
                 help_text = (
@@ -1307,17 +1425,6 @@ class CoreCommands:
         except Exception as e:
             await event.edit(f"❌ Ошибка вычисления: {str(e)}")
 
-    async def restart_bot(self, event: Message = None):
-        """Перезагрузка юзербота"""
-        if event and not await self.is_owner(event):
-            return
-            
-        if event:
-            await event.edit("🔄 Перезагрузка...")
-        
-        await self.manager.save_loaded_modules()
-        os.execl(sys.executable, sys.executable, *sys.argv)
-
     def register_handlers(self):
         prefix = re.escape(self.manager.prefix)
 
@@ -1385,6 +1492,11 @@ async def main(client=None):
         # Инициализация основных команд
         core_commands = CoreCommands(manager)
         await core_commands.initialize()
+        
+        # Проверяем статус перезагрузки
+        await core_commands.check_restart_status()
+        
+        # Регистрация обработчиков
         core_commands.register_handlers()
 
         # Загрузка всех модулей
@@ -1393,10 +1505,6 @@ async def main(client=None):
         print(f"🟢 [Система] Юзербот запущен | Префикс: '{prefix}' | Версия: {manager.version}")
         print("🔹 Отправьте .help для списка команд")
         
-        # Убедимся, что обработчики зарегистрированы
-        print(f"🔹 Зарегистрировано обработчиков: {len(client.list_event_handlers())}")
-        
-        # Основной цикл
         await client.run_until_disconnected()
         
     except Exception as e:
@@ -1406,7 +1514,6 @@ async def main(client=None):
         if 'client' in locals() and client.is_connected():
             await client.disconnect()
             print("🔴 [Система] Юзербот остановлен")
-
 if __name__ == '__main__':
     # Убедимся, что используется правильный цикл событий
     if sys.platform == 'win32':
