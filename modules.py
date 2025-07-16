@@ -731,10 +731,8 @@ class CoreCommands:
         else:
             await event.edit("❌ Неизвестный тип настройки")
 
-
-    
     async def _generate_info_message(self):
-        """Генерация сообщения .info с медиа и текстом"""
+        """Генерация сообщения .info с поддержкой произвольной HTML-разметки"""
         me = await self.manager.client.get_me()
         uptime = datetime.now() - self.manager.start_time
 
@@ -753,28 +751,53 @@ class CoreCommands:
             template = DEFAULT_INFO_TEMPLATE
             media_path = None
         
-        # Подготовка данных для вставки в шаблон
+        # Подготовка данных с автоматическим определением HTML-разметки
+        def prepare_value(key, value):
+            if not isinstance(value, str):
+                return str(value)
+                
+            # Если в шаблоне для этого ключа уже есть HTML - оставляем как есть
+            if f'<{key}>' in template or f'</{key}>' in template:
+                return value
+            # Ищем HTML-теги вокруг плейсхолдера
+            placeholder = f'{{{key}}}'
+            pos = template.find(placeholder)
+            if pos > 0:
+                # Проверяем есть ли открывающий тег перед плейсхолдером
+                open_tag_pos = template.rfind('<', 0, pos)
+                close_tag_pos = template.rfind('>', 0, pos)
+                if open_tag_pos > close_tag_pos:
+                    return value  # Уже в HTML-тегах
+            
+            # Экранируем спецсимволы для HTML, если нет разметки
+            return html.escape(value)
+
+        # Подготовка данных с учетом возможной HTML-разметки
         info_data = {
-            'version': self.manager.version,
-            'session_id': self.manager.session_id,
-            'last_update_time': self.manager.last_update_time,
+            'version': prepare_value('version', self.manager.version),
+            'session_id': prepare_value('session_id', self.manager.session_id),
+            'last_update_time': prepare_value('last_update_time', self.manager.last_update_time),
             'owner_id': me.id,
-            'owner_name': me.first_name,
-            'uptime': str(uptime).split('.')[0],
-            'modules_count': len(self.manager.modules),
-            'os_info': CoreCommands.get_platform_info(),  # Вызываем статический метод класса
-            'python_version': platform.python_version(),
-            'telethon_version': telethon.__version__,
-            'repo_url': self.repo_url,
-            'prefix': self.manager.prefix
+            'owner_name': prepare_value('owner_name', me.first_name),
+            'uptime': prepare_value('uptime', str(uptime).split('.')[0]),
+            'modules_count': prepare_value('modules_count', len(self.manager.modules)),
+            'os_info': prepare_value('os_info', CoreCommands.get_platform_info()),
+            'python_version': prepare_value('python_version', platform.python_version()),
+            'telethon_version': prepare_value('telethon_version', telethon.__version__),
+            'repo_url': prepare_value('repo_url', self.repo_url),
+            'prefix': prepare_value('prefix', self.manager.prefix)
         }
 
-        # Форматируем текст
-        info_text = template.format(**info_data)
+        # Форматируем текст, сохраняя оригинальную разметку
+        try:
+            info_text = template.format(**info_data)
+        except Exception as e:
+            info_text = f"⚠️ Ошибка форматирования шаблона: {str(e)}\n\n{DEFAULT_INFO_TEMPLATE.format(**info_data)}"
+        
         return info_text, media_path
-    
+
     async def handle_info(self, event: Message):
-        """Обработчик команды .info"""
+        """Обработчик команды .info с безопасной HTML-разметкой"""
         if not await self.is_owner(event):
             return
             
@@ -811,7 +834,8 @@ class CoreCommands:
                 await event.edit(info_text, parse_mode='html')
                 
         except Exception as e:
-            await event.edit(f"❌ Ошибка при генерации информации: {str(e)}")        
+            error_msg = html.escape(f"❌ Ошибка при генерации информации: {str(e)}")
+            await event.edit(error_msg, parse_mode='html')    
         
     async def get_module_info(self, module_name: str) -> Dict[str, Any]:
         """Получение информации о модуле в структурированном виде"""
