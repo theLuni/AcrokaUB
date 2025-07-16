@@ -282,21 +282,22 @@ async def run(self) -> None:
                 print("\n🔌 Модули успешно загружены")
         except ImportError as e:
             print(f"\n⚠️ Ошибка импорта модулей: {e}")
-            except Exception as e:
-                print(f"\n❌ Ошибка загрузки модулей: {e}")
-                import traceback
-                traceback.print_exc()
+        except Exception as e:
+            print(f"\n❌ Ошибка загрузки модулей: {e}")
+            import traceback
+            traceback.print_exc()
 
     except KeyboardInterrupt:
         print("\n🛑 Работа остановлена")
     except Exception as e:
         print(f"\n🛑 Критическая ошибка: {e}")
+        import traceback
         traceback.print_exc()
     finally:
         if self.client.is_connected():
             await self.client.disconnect()
-            print("\n🔌 Соединение закрыто")    
-
+            print("\n🔌 Соединение закрыто")
+            
 if __name__ == '__main__':
     print("\n" + "="*50)
     print("🤖 Acroka Bot Manager".center(50))
