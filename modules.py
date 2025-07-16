@@ -2,6 +2,7 @@ from typing import Dict, Any
 import os
 import sys
 import bs4
+import html
 import subprocess 
 import importlib
 import asyncio
