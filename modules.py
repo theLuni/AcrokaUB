@@ -389,20 +389,21 @@ class CoreCommands:
         self.docs_url = DOCS_URL
         self._restart_status_file = 'source/.restart_status.json'
         
-    async def _save_restart_status(self, event_msg_id=None, chat_id=None):
+    async def _save_restart_status(self, event_msg_id=None, chat_id=None, restart_type="normal"):
         """Сохраняет статус перезагрузки в файл"""
         try:
             status = {
                 'msg_id': event_msg_id,
                 'chat_id': chat_id,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().strftime('%H:%M:%S'),
+                'type': restart_type,
+                'new_prefix': getattr(self, 'new_prefix', None)
             }
             os.makedirs(os.path.dirname(self._restart_status_file), exist_ok=True)
             with open(self._restart_status_file, 'w', encoding='utf-8') as f:
                 json.dump(status, f, ensure_ascii=False)
         except Exception as e:
             self.manager.logger.error(f"Error saving restart status: {str(e)}")
-
     async def _clear_restart_status(self):
         """Очищает статус перезагрузки"""
         try:
@@ -410,16 +411,25 @@ class CoreCommands:
                 os.remove(self._restart_status_file)
         except Exception as e:
             self.manager.logger.error(f"Error clearing restart status: {str(e)}")
-
-    async def _get_restart_status(self):
-        """Получает сохраненный статус перезагрузки"""
-        try:
-            if os.path.exists(self._restart_status_file):
-                with open(self._restart_status_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-        except Exception as e:
-            self.manager.logger.error(f"Error reading restart status: {str(e)}")
-        return None
+    async def _get_restart_message(self, status):
+        """Генерирует сообщение о перезагрузке на основе типа"""
+        messages = {
+            "normal": (
+                "🟢 <b>Acroka UserBot успешно перезагружен и работает!</b>\n"
+                f"🕒 <i>Время перезагрузки: {status.get('timestamp', 'N/A')}</i>"
+            ),
+            "update": (
+                "🎉 <b>Бот успешно обновлен!</b>\n\n"
+                f"<b>Новая версия:</b> <code>{getattr(self, 'new_version', 'unknown')}</code>\n\n"
+                "✅ <b>Папка source сохранена</b>\n"
+                f"🕒 <i>Время перезагрузки: {status.get('timestamp', 'N/A')}</i>"
+            ),
+            "prefix": (
+                f"✅ <b>Префикс изменен на:</b> <code>{status.get('new_prefix', 'N/A')}</code>\n"
+                f"🕒 <i>Время перезагрузки: {status.get('timestamp', 'N/A')}</i>"
+            )
+        }
+        return messages.get(status.get('type', 'normal'), messages["normal"])
 
     async def check_restart_status(self):
         """Проверяет статус перезагрузки при старте и обновляет сообщение"""
@@ -431,15 +441,14 @@ class CoreCommands:
                 
                 if chat_id and msg_id:
                     try:
+                        message = await self._get_restart_message(status)
                         await self.manager.client.edit_message(
                             chat_id,
                             msg_id,
-                            "🟢 <b>Acroka UserBot успешно перезагружен и работает!</b>\n"
-                            f"🕒 <i>Время перезагрузки: {datetime.now().strftime('%H:%M:%S')}</i>",
+                            message,
                             parse_mode='html'
                         )
                     except Exception as e:
-                        # Если сообщение не найдено, отправляем новое
                         if "message not found" in str(e).lower():
                             me = await self.manager.client.get_me()
                             await self.manager.client.send_message(
@@ -452,42 +461,50 @@ class CoreCommands:
         except Exception as e:
             self.manager.logger.error(f"Error in check_restart_status: {str(e)}")
 
-    async def restart_bot(self, event: Message = None):
-        """Улучшенная перезагрузка бота с подтверждением"""
+    async def restart_bot(self, event: Message = None, restart_type="normal", **kwargs):
+        """Улучшенная перезагрузка бота"""
         if event and not await self.is_owner(event):
             return
 
-        # Сохраняем сообщение о начале перезагрузки
-        restart_msg = None
+        # Сохраняем дополнительные параметры
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        restart_message = {
+            "normal": (
+                "🔄 <b>Acroka UserBot перезагружается...</b>\n"
+                "⏳ <i>Это займет несколько секунд</i>"
+            ),
+            "update": (
+                "🔄 <b>Применение обновлений...</b>\n"
+                "⏳ <i>Это займет несколько секунд</i>"
+            ),
+            "prefix": (
+                f"✅ <b>Префикс изменен на:</b> <code>{kwargs.get('new_prefix', 'N/A')}</code>\n"
+                "🔄 <b>Acroka UserBot перезагружается для применения изменений...</b>"
+            )
+        }.get(restart_type, "normal")
+
         try:
             if event:
-                restart_msg = await event.edit(
-                    "🔄 <b>Acroka UserBot перезагружается...</b>\n"
-                    "⏳ <i>Это займет несколько секунд</i>",
-                    parse_mode='html'
-                )
-                await self._save_restart_status(restart_msg.id, event.chat_id)
+                msg = await event.edit(restart_message, parse_mode='html')
+                await self._save_restart_status(msg.id, event.chat_id, restart_type)
             else:
                 me = await self.manager.client.get_me()
-                restart_msg = await self.manager.client.send_message(
+                msg = await self.manager.client.send_message(
                     me.id,
-                    "🔄 <b>Acroka UserBot перезагружается...</b>\n"
-                    "⏳ <i>Это займет несколько секунд</i>",
+                    restart_message,
                     parse_mode='html'
                 )
-                await self._save_restart_status(restart_msg.id, me.id)
-        except Exception as e:
-            self.manager.logger.error(f"Error sending restart message: {str(e)}")
+                await self._save_restart_status(msg.id, me.id, restart_type)
 
-        # Гарантированное сохранение состояния
-        try:
             await self.manager.save_loaded_modules()
-            await asyncio.sleep(2)  # Даем время на сохранение
+            await asyncio.sleep(2)
+            os.execl(sys.executable, sys.executable, *sys.argv)
         except Exception as e:
-            self.manager.logger.error(f"Error during pre-restart cleanup: {str(e)}")
-
-        # Перезапуск
-        os.execl(sys.executable, sys.executable, *sys.argv)
+            if event:
+                await event.edit(f"❌ Ошибка перезагрузки: {str(e)}")
+            self.manager.logger.error(f"Error during restart: {str(e)}")
 
     
     async def initialize(self):
@@ -540,6 +557,7 @@ class CoreCommands:
             await event.edit(
                 "⚙️ <b>Доступные настройки:</b>\n\n"
                 f"<code>{self.manager.prefix}cfg prefix [новый префикс]</code> - изменить префикс команд\n"
+                f"<code>{self.manager.prefix}cfg info help</code> - справка по шаблону info\n"
                 f"<code>{self.manager.prefix}cfg info</code> - сохранить шаблон info (ответ на сообщение)\n"
                 f"<code>{self.manager.prefix}cfg help</code> - сохранить шаблон помощи (ответ на сообщение)\n"
                 f"<code>{self.manager.prefix}cfg media</code> - сохранить медиа (ответ на сообщение)\n"
@@ -565,36 +583,31 @@ class CoreCommands:
 
             self.manager.prefix = value
             try:
-                # Сохраняем новый префикс
                 with open(PREFIX_FILE, 'w') as f:
                     f.write(value)
                 
-                # Отправляем сообщение о начале перезагрузки
-                msg = await event.edit(
-                    f"✅ Префикс изменен на: <code>{value}</code>\n"
-                    "🔄 <b>Acroka UserBot перезагружается для применения изменений...</b>",
-                    parse_mode='html'
-                )
-                
-                # Сохраняем статус перезагрузки
-                await self._save_restart_status(msg.id, event.chat_id)
-                
-                # Даем время на сохранение и отправку сообщения
-                await asyncio.sleep(2)
-                
-                # Выполняем перезагрузку
-                await self.restart_bot()
-                
+                await self.restart_bot(event, restart_type="prefix", new_prefix=value)
             except Exception as e:
                 await event.edit(f"❌ Ошибка при смене префикса: {str(e)}")
+
         elif setting_type == "info":
-            if value == "help":
+            if value and value.lower() == "help":
                 help_text = (
                     f"ℹ️ <b>Помощь по команде .info:</b>\n\n"
-                    f"Доступные переменные: version, session_id, last_update_time, "
-                    f"owner_id, owner_name, uptime, modules_count, os_info, python_version, "
-                    f"telethon_version, repo_url, prefix\n\n"
-                    f"<b>Текущий шаблон:</b>\n"
+                    f"📌 <b>Доступные переменные:</b>\n"
+                    f"• version - версия бота\n"
+                    f"• session_id - ID сессии\n"
+                    f"• last_update_time - время последнего обновления\n"
+                    f"• owner_id - ID владельца\n"
+                    f"• owner_name - имя владельца\n"
+                    f"• uptime - время работы бота\n"
+                    f"• modules_count - количество модулей\n"
+                    f"• os_info - информация об ОС\n"
+                    f"• python_version - версия Python\n"
+                    f"• telethon_version - версия Telethon\n"
+                    f"• repo_url - ссылка на репозиторий\n"
+                    f"• prefix - текущий префикс команд\n\n"
+                    f"📝 <b>Текущий шаблон:</b>\n"
                     f"<code>{self.DEFAULT_INFO_TEMPLATE}</code>"
                 )
                 await event.edit(help_text, parse_mode='html')
@@ -1034,10 +1047,10 @@ class CoreCommands:
 
             # 3. Копируем только нужные файлы, исключая папку source
             await msg.edit("🔄 <b>Применение обновлений...</b>", parse_mode='html')
-            excluded = {'source', '.git', 'pycache', temp_dir}
+            excluded = {'source', '.git', '__pycache__', temp_dir}
             
             for item in os.listdir(temp_dir):
-                if item not in excluded:
+                if item not in excluded and not item.endswith('.pyc'):
                     src_path = os.path.join(temp_dir, item)
                     dest_path = os.path.join('.', item)
                     
@@ -1062,15 +1075,18 @@ class CoreCommands:
             # 5. Очистка временных файлов
             shutil.rmtree(temp_dir)
 
-            # 6. Обновление зависимостей
+            # 6. Обновление зависимостей (пробуем оба возможных файла требований)
             await msg.edit("🔄 <b>Обновление зависимостей...</b>", parse_mode='html')
-            if os.path.exists('requirements.txt'):
-                process = await asyncio.create_subprocess_shell(
-                    f"{sys.executable} -m pip install -r requirements.txt --upgrade",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await process.communicate()
+            requirements_files = ['dops.txt']
+            
+            for req_file in requirements_files:
+                if os.path.exists(req_file):
+                    process = await asyncio.create_subprocess_shell(
+                        f"{sys.executable} -m pip install -r {req_file} --upgrade",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    await process.communicate()
 
             await msg.edit(
                 f"🎉 <b>Бот успешно обновлен!</b>\n\n"
@@ -1081,7 +1097,7 @@ class CoreCommands:
             )
 
             await asyncio.sleep(5)
-            await self.restart_bot()
+            await self.restart_bot(event, restart_type="update", new_version=new_version)
 
         except Exception as e:
             error_msg = (
@@ -1093,9 +1109,8 @@ class CoreCommands:
                 "3. Перезапустите бота"
             )
             await event.edit(error_msg, parse_mode='html')
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-                
+            if 'temp_dir' in locals() and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)               
     
     async def handle_clean(self, event: Message):
         """Очистка кэша и временных файлов"""
