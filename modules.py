@@ -389,21 +389,33 @@ class CoreCommands:
         self.docs_url = DOCS_URL
         self._restart_status_file = 'source/.restart_status.json'
         
-    async def _save_restart_status(self, event_msg_id=None, chat_id=None, restart_type="normal"):
+    async def _save_restart_status(self, event_msg_id=None, chat_id=None, restart_type="normal", **kwargs):
         """Сохраняет статус перезагрузки в файл"""
         try:
             status = {
                 'msg_id': event_msg_id,
                 'chat_id': chat_id,
-                'timestamp': datetime.now().strftime('%H:%M:%S'),
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'type': restart_type,
-                'new_prefix': getattr(self, 'new_prefix', None)
+                **kwargs
             }
             os.makedirs(os.path.dirname(self._restart_status_file), exist_ok=True)
             with open(self._restart_status_file, 'w', encoding='utf-8') as f:
                 json.dump(status, f, ensure_ascii=False)
         except Exception as e:
             self.manager.logger.error(f"Error saving restart status: {str(e)}")
+            
+    async def _get_restart_status(self):
+        """Получает статус перезагрузки из файла"""
+        try:
+            if os.path.exists(self._restart_status_file):
+                with open(self._restart_status_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            return None
+        except Exception as e:
+            self.manager.logger.error(f"Error getting restart status: {str(e)}")
+            return None
+            
     async def _clear_restart_status(self):
         """Очищает статус перезагрузки"""
         try:
@@ -411,25 +423,6 @@ class CoreCommands:
                 os.remove(self._restart_status_file)
         except Exception as e:
             self.manager.logger.error(f"Error clearing restart status: {str(e)}")
-    async def _get_restart_message(self, status):
-        """Генерирует сообщение о перезагрузке на основе типа"""
-        messages = {
-            "normal": (
-                "🟢 <b>Acroka UserBot успешно перезагружен и работает!</b>\n"
-                f"🕒 <i>Время перезагрузки: {status.get('timestamp', 'N/A')}</i>"
-            ),
-            "update": (
-                "🎉 <b>Бот успешно обновлен!</b>\n\n"
-                f"<b>Новая версия:</b> <code>{getattr(self, 'new_version', 'unknown')}</code>\n\n"
-                "✅ <b>Папка source сохранена</b>\n"
-                f"🕒 <i>Время перезагрузки: {status.get('timestamp', 'N/A')}</i>"
-            ),
-            "prefix": (
-                f"✅ <b>Префикс изменен на:</b> <code>{status.get('new_prefix', 'N/A')}</code>\n"
-                f"🕒 <i>Время перезагрузки: {status.get('timestamp', 'N/A')}</i>"
-            )
-        }
-        return messages.get(status.get('type', 'normal'), messages["normal"])
 
     async def check_restart_status(self):
         """Проверяет статус перезагрузки при старте и обновляет сообщение"""
@@ -461,14 +454,30 @@ class CoreCommands:
         except Exception as e:
             self.manager.logger.error(f"Error in check_restart_status: {str(e)}")
 
+    async def _get_restart_message(self, status):
+        """Генерирует сообщение о перезагрузке на основе типа"""
+        messages = {
+            "normal": (
+                "🟢 <b>Acroka UserBot успешно перезагружен и работает!</b>\n"
+                f"🕒 <i>Время перезагрузки: {status.get('timestamp', 'N/A')}</i>"
+            ),
+            "update": (
+                "🎉 <b>Бот успешно обновлен!</b>\n\n"
+                f"<b>Новая версия:</b> <code>{status.get('new_version', 'unknown')}</code>\n\n"
+                "✅ <b>Папка source сохранена</b>\n"
+                f"🕒 <i>Время перезагрузки: {status.get('timestamp', 'N/A')}</i>"
+            ),
+            "prefix": (
+                f"✅ <b>Префикс изменен на:</b> <code>{status.get('new_prefix', 'N/A')}</code>\n"
+                f"🕒 <i>Время перезагрузки: {status.get('timestamp', 'N/A')}</i>"
+            )
+        }
+        return messages.get(status.get('type', 'normal'), messages["normal"])
+
     async def restart_bot(self, event: Message = None, restart_type="normal", **kwargs):
         """Улучшенная перезагрузка бота"""
         if event and not await self.is_owner(event):
             return
-
-        # Сохраняем дополнительные параметры
-        for key, value in kwargs.items():
-            setattr(self, key, value)
 
         restart_message = {
             "normal": (
@@ -488,7 +497,12 @@ class CoreCommands:
         try:
             if event:
                 msg = await event.edit(restart_message, parse_mode='html')
-                await self._save_restart_status(msg.id, event.chat_id, restart_type)
+                await self._save_restart_status(
+                    msg.id, 
+                    event.chat_id, 
+                    restart_type,
+                    **kwargs
+                )
             else:
                 me = await self.manager.client.get_me()
                 msg = await self.manager.client.send_message(
@@ -496,7 +510,12 @@ class CoreCommands:
                     restart_message,
                     parse_mode='html'
                 )
-                await self._save_restart_status(msg.id, me.id, restart_type)
+                await self._save_restart_status(
+                    msg.id, 
+                    me.id, 
+                    restart_type,
+                    **kwargs
+                )
 
             await self.manager.save_loaded_modules()
             await asyncio.sleep(2)
@@ -505,7 +524,6 @@ class CoreCommands:
             if event:
                 await event.edit(f"❌ Ошибка перезагрузки: {str(e)}")
             self.manager.logger.error(f"Error during restart: {str(e)}")
-
     
     async def initialize(self):
         me = await self.manager.client.get_me()
@@ -608,7 +626,7 @@ class CoreCommands:
                     f"• repo_url - ссылка на репозиторий\n"
                     f"• prefix - текущий префикс команд\n\n"
                     f"📝 <b>Текущий шаблон:</b>\n"
-                    f"<code>{self.DEFAULT_INFO_TEMPLATE}</code>"
+                    f"<code>{DEFAULT_INFO_TEMPLATE}</code>"
                 )
                 await event.edit(help_text, parse_mode='html')
                 return
@@ -621,9 +639,9 @@ class CoreCommands:
             else:
                 try:
                     with open(self.CUSTOM_INFO_FILE, 'r', encoding='utf-8') as f:
-                        current_template = json.load(f).get('template', self.DEFAULT_INFO_TEMPLATE)
+                        current_template = json.load(f).get('template', DEFAULT_INFO_TEMPLATE)
                 except Exception:
-                    current_template = self.DEFAULT_INFO_TEMPLATE
+                    current_template = DEFAULT_INFO_TEMPLATE
 
                 await event.edit(
                     f"ℹ️ <b>Текущий текст для .info:</b>\n\n"
