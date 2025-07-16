@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import bs4
 import random
 import string
 from pathlib import Path
