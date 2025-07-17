@@ -1090,7 +1090,7 @@ class CoreCommands:
 
             # 3. Копируем только нужные файлы, исключая папку source
             await msg.edit("🔄 <b>Применение обновлений...</b>", parse_mode='html')
-            excluded = {'source', '.git', '__pycache__', temp_dir}
+            excluded = {'source', '.git', 'start.sh', '__pycache__', temp_dir}
             
             for item in os.listdir(temp_dir):
                 if item not in excluded and not item.endswith('.pyc'):
