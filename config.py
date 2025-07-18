@@ -1,18 +1,15 @@
 import os
 from typing import Tuple, Optional
 
-# Пути к файлам конфигурации
 SOURCE_FOLDER = 'source'
 CONFIG_DIR = 'config'
 os.makedirs(SOURCE_FOLDER, exist_ok=True)
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
-# Файлы конфигурации
 TOKEN_FILE = os.path.join(SOURCE_FOLDER, 'token.txt')
 BOT_TOKEN_FILE = os.path.join(CONFIG_DIR, 'bot_token.txt')
 API_CREDENTIALS_FILE = os.path.join(CONFIG_DIR, 'api_credentials.txt')
 
-# Глобальные переменные для хранения конфигурации
 API_ID: str = ""
 API_HASH: str = ""
 BOT_TOKEN: Optional[str] = None
@@ -71,5 +68,4 @@ def get_bot_token() -> Optional[str]:
                 if token_line.startswith('AAG') and len(token_line) >= 30:
                     return token_line
 
-# Вызов функции для получения API ID и API Hash
 API_ID, API_HASH = get_api_credentials()
