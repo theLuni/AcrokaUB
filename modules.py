@@ -1186,7 +1186,7 @@ class CoreCommands:
             )
 
     async def handle_loadmod(self, event: Message):
-        """Загрузка модуля"""
+        """Загрузка модуля с улучшенной обработкой зависимостей"""
         if not await self.is_owner(event):
             return
             
@@ -1204,9 +1204,85 @@ class CoreCommands:
             return
             
         try:
+            # Скачиваем файл модуля
+            msg = await event.edit("⬇️ Скачивание модуля...")
             path = await reply.download_media(file=MODS_DIR)
             module_name = os.path.splitext(os.path.basename(path))[0]
             
+            # Читаем содержимое модуля для проверки зависимостей
+            with open(path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Проверяем системные зависимости (apt/pkg)
+            system_deps = []
+            system_requires = re.search(r'#\s*system_requires?:\s*(.+)', content)
+            if system_requires:
+                system_deps = [dep.strip() for dep in system_requires.group(1).split(',') if dep.strip()]
+            
+            # Проверяем Python зависимости
+            python_deps = []
+            python_requires = re.search(r'#\s*requires?:\s*(.+)', content)
+            if python_requires:
+                python_deps = [dep.strip() for dep in python_requires.group(1).split(',') if dep.strip()]
+            
+            # Устанавливаем системные зависимости если они есть
+            if system_deps:
+                await msg.edit(f"🛠️ Установка системных зависимостей: {', '.join(system_deps)}")
+                
+                # Определяем пакетный менеджер
+                if os.path.exists('/data/data/com.termux/files/usr/bin/pkg'):  # Termux
+                    cmd = f"pkg install -y {' '.join(system_deps)}"
+                elif shutil.which('apt-get'):  # Linux с apt
+                    cmd = f"sudo apt-get install -y {' '.join(system_deps)}"
+                elif shutil.which('yum'):  # Linux с yum
+                    cmd = f"sudo yum install -y {' '.join(system_deps)}"
+                elif shutil.which('pacman'):  # Arch Linux
+                    cmd = f"sudo pacman -S --noconfirm {' '.join(system_deps)}"
+                else:
+                    await msg.edit(f"⚠️ Не удалось определить пакетный менеджер для установки: {', '.join(system_deps)}")
+                    return
+                
+                try:
+                    process = await asyncio.create_subprocess_shell(
+                        cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await process.communicate()
+                    
+                    if process.returncode != 0:
+                        error_msg = f"❌ Ошибка установки системных зависимостей:\n{stderr.decode()}"
+                        await msg.edit(error_msg)
+                        return
+                    
+                    await msg.edit(f"✅ Системные зависимости установлены: {', '.join(system_deps)}")
+                except Exception as e:
+                    await msg.edit(f"❌ Ошибка при установке системных зависимостей: {str(e)}")
+                    return
+            
+            # Устанавливаем Python зависимости если они есть
+            if python_deps:
+                await msg.edit(f"📦 Установка Python библиотек: {', '.join(python_deps)}")
+                
+                try:
+                    process = await asyncio.create_subprocess_shell(
+                        f"{sys.executable} -m pip install --upgrade {' '.join(python_deps)}",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await process.communicate()
+                    
+                    if process.returncode != 0:
+                        error_msg = f"❌ Ошибка установки Python библиотек:\n{stderr.decode()}"
+                        await msg.edit(error_msg)
+                        return
+                    
+                    await msg.edit(f"✅ Python библиотеки установлены: {', '.join(python_deps)}")
+                except Exception as e:
+                    await msg.edit(f"❌ Ошибка при установке Python библиотек: {str(e)}")
+                    return
+            
+            # Загружаем модуль после установки всех зависимостей
             if await self.manager.load_module(module_name):
                 module_data = self.manager.modules[module_name]
                 module = module_data['module']
@@ -1229,10 +1305,21 @@ class CoreCommands:
                 
                 info_msg = [
                     f"✅ <b>Модуль {module_name} v{version} успешно загружен!</b>",
-                    "",
-                    f"📝 <b>Описание:</b> {desc}",
                     ""
                 ]
+                
+                if system_deps or python_deps:
+                    info_msg.append("⚙️ <b>Установленные зависимости:</b>")
+                    if system_deps:
+                        info_msg.append(f"• Системные: {', '.join(system_deps)}")
+                    if python_deps:
+                        info_msg.append(f"• Python: {', '.join(python_deps)}")
+                    info_msg.append("")
+                
+                info_msg.extend([
+                    f"📝 <b>Описание:</b> {desc}",
+                    ""
+                ])
                 
                 if formatted_commands:
                     info_msg.extend([
@@ -1241,15 +1328,15 @@ class CoreCommands:
                         ""
                     ])
                 
-                await event.edit("\n".join(info_msg), parse_mode='html')
+                await msg.edit("\n".join(info_msg), parse_mode='html')
             else:
-                await event.edit("❌ Ошибка загрузки модуля")
+                await msg.edit("❌ Ошибка загрузки модуля")
                 
         except Exception as e:
             await event.edit(f"❌ Ошибка: {str(e)}")
-            if os.path.exists(path):
+            if 'path' in locals() and os.path.exists(path):
                 os.remove(path)
-
+    
     async def handle_searchmod(self, event: Message):
         if not await self.is_owner(event):
             return
