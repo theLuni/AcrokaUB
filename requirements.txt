@@ -1,0 +1,10 @@
+telethon==1.40.0
+requests==2.32.4
+aiohttp==3.12.13
+psutil==7.0.0
+pytz==2025.2
+beautifulsoup4==4.12.3
+googletrans==4.0.0rc1
+colorama==0.4.6
+Pillow==10.4.0
+python-dotenv==1.0.1
