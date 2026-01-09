@@ -61,7 +61,7 @@ clone_repo() {
 
 install_dependencies() {
     echo -e "${YELLOW}[*] Установка Python-зависимостей...${NC}"
-    pip install -r dops.txt || {
+    pip install -r requirements.txt || {
         echo -e "${RED}[✗] Ошибка при установке зависимостей${NC}"
         exit 1
     }
